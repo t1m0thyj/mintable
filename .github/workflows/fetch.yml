@@ -2,6 +2,9 @@ name: Fetch
 
 on:
   workflow_dispatch:
+  # To opt in to scheduled live fetches, uncomment these lines on the default branch:
+  # schedule:
+  #   - cron: '0 12 * * *'
 
 permissions:
   contents: read
@@ -9,14 +12,36 @@ permissions:
 jobs:
   fetch:
     runs-on: ubuntu-latest
-    env:
-      MINTABLE_CONFIG: ${{ secrets.MINTABLE_CONFIG }}
+    concurrency:
+      group: mintable-live-fetch
+      cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
       - run: npm ci
       - run: npm run build
-      - run: node ./lib/scripts/cli.js fetch --ci
+      - name: Fetch with temporary credentials
+        shell: bash
+        env:
+          MINTABLE_CONFIG_SECRET: ${{ secrets.MINTABLE_CONFIG }}
+          TELLER_CERTIFICATE_PEM: ${{ secrets.TELLER_CERTIFICATE_PEM }}
+          TELLER_PRIVATE_KEY_PEM: ${{ secrets.TELLER_PRIVATE_KEY_PEM }}
+        run: |
+          set -euo pipefail
+          umask 077
+          credential_dir="$(mktemp -d)"
+          trap 'rm -f "$credential_dir/config.jsonc" "$credential_dir/certificate.pem" "$credential_dir/private-key.pem"; rmdir "$credential_dir"' EXIT
+          test -n "$MINTABLE_CONFIG_SECRET"
+          test -n "$TELLER_CERTIFICATE_PEM"
+          test -n "$TELLER_PRIVATE_KEY_PEM"
+          printf '%s' "$MINTABLE_CONFIG_SECRET" > "$credential_dir/config.jsonc"
+          printf '%s' "$TELLER_CERTIFICATE_PEM" > "$credential_dir/certificate.pem"
+          printf '%s' "$TELLER_PRIVATE_KEY_PEM" > "$credential_dir/private-key.pem"
+          export TELLER_CERTIFICATE_FILE="$credential_dir/certificate.pem"
+          export TELLER_PRIVATE_KEY_FILE="$credential_dir/private-key.pem"
+          node ./lib/scripts/cli.js fetch --config-file "$credential_dir/config.jsonc" --ci

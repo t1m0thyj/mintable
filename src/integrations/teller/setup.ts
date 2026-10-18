@@ -1,7 +1,7 @@
 import { existsSync, realpathSync } from 'fs'
 import prompts from 'prompts'
 import { TellerConfig, defaultTellerConfig } from '../../types/integrations/teller'
-import { updateConfig, getConfig } from '../../common/config'
+import { updateConfig, getConfig, resolveConfigRelativePath } from '../../common/config'
 import { IntegrationId } from '../../types/integrations'
 import { logInfo } from '../../common/logging'
 
@@ -43,7 +43,7 @@ export default async () => {
             message: 'Certificate file path (blank in sandbox)',
             initial: previous?.pathCertificate || '',
             validate: (s: string) =>
-                (s && existsSync(s)) ||
+                (s && existsSync(resolveConfigRelativePath(s))) ||
                 (!s && environmentResponse.environment === 'sandbox') ||
                 'Enter an existing certificate file.'
         },
@@ -53,7 +53,7 @@ export default async () => {
             message: 'Private key file path (blank in sandbox)',
             initial: previous?.pathPrivateKey || '',
             validate: (s: string) =>
-                (s && existsSync(s)) ||
+                (s && existsSync(resolveConfigRelativePath(s))) ||
                 (!s && environmentResponse.environment === 'sandbox') ||
                 'Enter an existing private key file.'
         }
@@ -71,8 +71,12 @@ export default async () => {
             name: credentials.name,
             appId: credentials.appId,
             environment: environmentResponse.environment,
-            pathCertificate: credentials.pathCertificate ? realpathSync(credentials.pathCertificate) : '',
-            pathPrivateKey: credentials.pathPrivateKey ? realpathSync(credentials.pathPrivateKey) : ''
+            pathCertificate: credentials.pathCertificate
+                ? realpathSync(resolveConfigRelativePath(credentials.pathCertificate))
+                : '',
+            pathPrivateKey: credentials.pathPrivateKey
+                ? realpathSync(resolveConfigRelativePath(credentials.pathPrivateKey))
+                : ''
         }
         return config
     })

@@ -1,81 +1,28 @@
-<h4 align="center"><img width="100" src="./docs/img/icon.png" alt="Mintable"></h4>
-<h1 align="center" style="font-weight: 500; font-size: 60px !important; border-bottom: 0 !important;">Mintable</h1>
+# Mintable v3 release candidate
 
-<h4 align="center">Automate your personal finances – for free, with no ads, and no data collection.</h4>
+Mintable imports balances and transactions from Teller or CSV files and exports them to Google Sheets or CSV. It runs on your computer or in an opt-in GitHub Actions workflow. Node 24 or newer is required.
 
-<br>
+**This fork is not published yet.** The checkout remains private for packaging until its repository and npm package identity are chosen. The original `mintable` npm package and `kevinschaich/mintable` repository belong to the original project; do not use them as this fork's release destination. The original author and MIT license remain credited in [LICENSE](./LICENSE).
 
-Mintable helps you:
+## Try the local release candidate
 
-- Keep track of your account balances
-- Aggregate transactions from all your banking institutions, including checking accounts, savings accounts, and credit cards
-- Analyze and budget your spending using a spreadsheet and formulas
+From this checkout:
 
-![](./docs/img/mintable.png)
+```bash
+npm ci
+npm test
+npm pack
+npm install --global ./mintable-3.0.0-rc.1.tgz
+mintable setup
+mintable fetch
+```
 
-<br>
+On Windows PowerShell, use the same commands in the checkout directory. `mintable setup` guides you through Teller or CSV import and Google Sheets or CSV output. Keep the Teller certificate, private key, configuration file, and backups private.
 
-[![](https://img.shields.io/github/actions/workflow/status/kevinschaich/mintable/test.yml?branch=master)](https://github.com/kevinschaich/mintable/actions?query=workflow%3ATest)
-[![](https://img.shields.io/npm/v/mintable)](https://www.npmjs.com/package/mintable)
-[![](https://img.shields.io/github/release/kevinschaich/mintable.svg)](https://github.com/kevinschaich/mintable/releases)
-[![](https://img.shields.io/github/license/kevinschaich/mintable.svg)](https://github.com/kevinschaich/mintable/blob/master/LICENSE)
-[![](https://img.shields.io/github/issues/kevinschaich/mintable.svg)](https://github.com/kevinschaich/mintable/issues)
-[![](https://img.shields.io/github/issues-pr/kevinschaich/mintable.svg)](https://github.com/kevinschaich/mintable/pulls)
-[![](https://img.shields.io/reddit/subreddit-subscribers/Mintable?style=social)](https://reddit.com/r/Mintable)
+Teller's sandbox uses test data. Development uses real bank data and currently allows up to 100 enrollments; production is a paid environment. This integration handles Teller's depository and credit account types when the account exposes transactions. Teller's API may omit balances for some accounts; institution and product coverage must be checked with the intended banks. See [Teller environments](https://teller.io/docs/guides/environments) and [account capabilities](https://teller.io/docs/api/accounts).
 
----
+For CSV-only use, choose CSV import during setup. Google Sheets is optional. See the [full guide](./docs/README.md) for Google authorization, platform-specific scheduling, certificate renewal, connection repair, migration, rollback, and the opt-in GitHub Actions workflow.
 
-## Quickstart
+## Release status
 
-Requires Node 24 or newer.
-
-1. Create a Teller application if you want to connect banks, or prepare CSV files for CSV-only use.
-2. Install Mintable and run the wizard:
-
-    ```bash
-    npm install -g mintable
-    mintable setup
-    ```
-
-3. Update balances and transactions with `mintable fetch`.
-
-Teller development and production use real bank data; sandbox uses test data. The wizard lets you choose Google Sheets or CSV output. See the [setup guide](./docs/README.md) for linking, repair, and CSV options.
-
-If you already have Mintable data, preview the [v3 migration](./docs/README.md#migrating-existing-data) before connecting Teller. The migration preserves your original config and outputs for rollback.
-
-## Documentation
-
-Check out the full documentation [in the `./docs` folder](./docs/README.md).
-
-## FAQs
-
-**WTF is 'Mintable'?!**
-
-> **min·ta·ble**: _noun._
-> 1. An open-source tool to automate your personal finances – for free, with no ads, and no data collection. Derived from *mint* (the [wildly popular personal finance app from Intuit](https://www.mint.com/)) + *table* (a spreadsheet).
-
-**Do I have to connect a bank?**
-
-* No. Choose CSV-only import in `mintable setup`.
-
-**Do I have to use Google Sheets?**
-
-* Nope. You can [export your account balances & transactions to a CSV file](./docs/README.md#on-your-local-machine--via-csv-files) exclusively on your local machine.
-
-**Do I have to manually run this every time I want new transactions in my spreadsheet?**
-
-* Nope. You can automate it for free using [BitBar](./docs/README.md#automatically-in-your-macs-menu-bar--via-bitbar), [`cron`](./docs/README.md#automatically-in-your-local-machines-terminal--via-cron), or [GitHub Actions](./docs/README.md#automatically-in-the-cloud--via-github-actions).
-
-**How do I use it on Windows?**
-
-* Use Node 24 or newer. The setup wizard accepts absolute Windows paths for CSV files.
-
-**It's not working!**
-
-- [File an issue](https://github.com/kevinschaich/mintable/issues)
-
-## Alternatives
-
-- [**Money in Excel**](https://www.microsoft.com/en-us/microsoft-365/blog/2020/06/15/introducing-money-excel-easier-manage-finances/): Recently announced partnership between Microsoft/Plaid. Requires a Microsoft 365 subscription ($70+/year).
-- [**Mint**](https://www.mint.com/): Owned by Intuit (TurboTax). Apps for iOS/Android/Web.
-- [**build-your-own-mint**](https://github.com/yyx990803/build-your-own-mint): Some assembly required. More flexible.
+The v3 code and fixture tests are ready for local review. A public release still requires a fork repository and package name, a packed-install check on each target platform, and live Teller development validation against one depository and one credit statement using disposable output destinations. The [release checklist](./docs/release-v3.md) records those gates.

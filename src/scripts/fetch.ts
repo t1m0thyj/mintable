@@ -4,7 +4,7 @@ import { GoogleIntegration } from '../integrations/google/googleIntegration'
 import { logInfo } from '../common/logging'
 import { Account } from '../types/account'
 import { IntegrationId } from '../types/integrations'
-import { parseISO, subMonths, startOfMonth } from 'date-fns'
+import { parseISO, subMonths, startOfMonth, format, isValid } from 'date-fns'
 import { CSVImportIntegration } from '../integrations/csv-import/csvImportIntegration'
 import { CSVExportIntegration } from '../integrations/csv-export/csvExportIntegration'
 import { applyTransactionRules } from '../common/transactionRules'
@@ -39,16 +39,25 @@ export default async () => {
     }
 
     // Start date to fetch transactions, default to 2 months of history
+    const parseConfiguredDate = (value: string, name: string): Date => {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Error(`${name} must be a date in YYYY-MM-DD format.`)
+        const date = parseISO(value)
+        if (!isValid(date) || format(date, 'yyyy-MM-dd') !== value)
+            throw new Error(`${name} is not a valid calendar date.`)
+        return date
+    }
     let startDate = config.transactions.startDate
-        ? parseISO(config.transactions.startDate)
+        ? parseConfiguredDate(config.transactions.startDate, 'transactions.startDate')
         : startOfMonth(subMonths(new Date(), 2))
     if (config.migration?.status === 'active' && config.migration.cutoverMonth) {
-        const cutover = parseISO(`${config.migration.cutoverMonth}-01`)
+        const cutover = parseConfiguredDate(`${config.migration.cutoverMonth}-01`, 'migration.cutoverMonth')
         if (startDate < cutover) startDate = cutover
     }
 
     // End date to fetch transactions in YYYY-MM-DD format, default to current date
-    let endDate = config.transactions.endDate ? parseISO(config.transactions.endDate) : new Date()
+    let endDate = config.transactions.endDate
+        ? parseConfiguredDate(config.transactions.endDate, 'transactions.endDate')
+        : new Date()
     if (isNaN(startDate.getTime()) || isNaN(endDate.getTime()) || startDate > endDate) {
         throw new Error('Fetch date range is invalid or ends before the migration cutover month.')
     }
@@ -133,7 +142,7 @@ export default async () => {
             await csv.updateBalances(accounts)
             break
         default:
-            break
+            throw new Error(`Unsupported balances output: ${config.balances.integration}.`)
     }
 
     switch (config.transactions.integration) {
@@ -144,6 +153,6 @@ export default async () => {
             await csv.updateTransactions(accounts)
             break
         default:
-            break
+            throw new Error(`Unsupported transactions output: ${config.transactions.integration}.`)
     }
 }

@@ -1,14 +1,16 @@
 import { IntegrationConfig, IntegrationId } from '../types/integrations'
 import { AccountConfig } from '../types/account'
 import { TransactionConfig } from '../types/transaction'
-import { logInfo, logError } from './logging'
+import { logInfo, MintableError } from './logging'
 import { argv } from 'yargs'
 import * as fs from 'fs'
 import * as os from 'os'
+import * as path from 'path'
 import Ajv from 'ajv'
 import { BalanceConfig } from '../types/balance'
 import { jsonc } from 'jsonc'
 import { writeFileAtomic } from './atomicFile'
+import { validateTransactionRules } from './transactionRules'
 
 const DEFAULT_CONFIG_FILE = '~/mintable.jsonc'
 const DEFAULT_CONFIG_VAR = 'MINTABLE_CONFIG'
@@ -82,10 +84,22 @@ export interface TellerEnrollmentConfig {
 }
 
 export const getConfigSource = (): ConfigSource => {
-    if (argv['config-file']) {
-        const path = argv['config-file'].replace(/^~(?=$|\/|\\)/, os.homedir())
-        logInfo(`Using configuration file \`${path}.\``)
-        return { type: 'file', path: path }
+    const fileOption = argv['config-file']
+    const variableOption = argv['config-variable']
+    if (fileOption && variableOption)
+        throw new MintableError('configuration', 'Choose either --config-file or --config-variable.')
+    if (fileOption) {
+        if (typeof fileOption !== 'string') throw new MintableError('configuration', '--config-file requires a path.')
+        const resolved = resolveHomePath(fileOption)
+        logInfo(`Using configuration file \`${resolved}.\``)
+        return { type: 'file', path: resolved }
+    }
+    if (variableOption) {
+        if (typeof variableOption !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(variableOption)) {
+            throw new MintableError('configuration', '--config-variable requires an environment variable name.')
+        }
+        logInfo(`Using configuration variable '${variableOption}'.`)
+        return { type: 'environment', variable: variableOption }
     }
 
     if (process.env[DEFAULT_CONFIG_VAR]) {
@@ -94,25 +108,33 @@ export const getConfigSource = (): ConfigSource => {
     }
 
     // Default to DEFAULT_CONFIG_FILE
-    const path = DEFAULT_CONFIG_FILE.replace(/^~(?=$|\/|\\)/, os.homedir())
-    logInfo(`Using default configuration file \`${path}.\``)
+    const resolved = resolveHomePath(DEFAULT_CONFIG_FILE)
+    logInfo(`Using default configuration file \`${resolved}.\``)
     logInfo(`You can supply either --config-file or --config-variable to specify a different configuration.`)
-    return { type: 'file', path: path }
+    return { type: 'file', path: resolved }
 }
 
-export const readConfig = (source: ConfigSource, checkExists?: boolean): string => {
+export const resolveHomePath = (value: string): string => path.resolve(value.replace(/^~(?=$|\/|\\)/, os.homedir()))
+
+export const resolveConfigRelativePath = (value: string, source: ConfigSource = getConfigSource()): string => {
+    const expanded = value.replace(/^~(?=$|\/|\\)/, os.homedir())
+    if (path.isAbsolute(expanded)) return path.normalize(expanded)
+    return path.resolve(source.type === 'file' ? path.dirname(source.path) : process.cwd(), expanded)
+}
+
+export const readConfig = (source: ConfigSource, checkExists?: boolean): string | undefined => {
     if (source.type === 'file') {
         try {
             const config = fs.readFileSync(source.path, 'utf8')
             logInfo('Successfully opened configuration file.')
             return config
         } catch (e) {
-            if (checkExists) {
-                logInfo('Unable to open config file.')
-            } else {
-                logError('Unable to open configuration file.', e)
-                logInfo("You may want to run `mintable setup` (or `mintable migrate`) if you haven't already.")
-            }
+            if (checkExists && (e as NodeJS.ErrnoException).code === 'ENOENT') return undefined
+            throw new MintableError(
+                'configuration',
+                `Unable to open configuration file ${source.path}. Run \`mintable setup\` or check the path.`,
+                { cause: e }
+            )
         }
     }
     if (source.type === 'environment') {
@@ -120,17 +142,17 @@ export const readConfig = (source: ConfigSource, checkExists?: boolean): string 
             const config = process.env[source.variable]
 
             if (config === undefined) {
-                throw `Variable \`${source.variable}\` not defined in environment.`
+                if (checkExists) return undefined
+                throw new MintableError('configuration', `Configuration variable ${source.variable} is not defined.`)
             }
 
             logInfo('Successfully retrieved configuration variable.')
             return config
         } catch (e) {
-            if (!checkExists) {
-                logInfo('Unable to read config variable from env.')
-            } else {
-                logError('Unable to read config variable from env.', e)
-            }
+            if (e instanceof MintableError) throw e
+            throw new MintableError('configuration', `Unable to read configuration variable ${source.variable}.`, {
+                cause: e
+            })
         }
     }
 }
@@ -141,7 +163,7 @@ export const parseConfig = (configString: string): Object => {
         logInfo('Successfully parsed configuration.')
         return parsedConfig
     } catch (e) {
-        logError('Unable to parse configuration.', e)
+        throw new MintableError('configuration', 'Unable to parse configuration JSONC.', { cause: e })
     }
 }
 
@@ -149,23 +171,26 @@ export const getConfigSchema = (): object => require('./config.schema.json')
 
 export const validateConfig = (parsedConfig: Object): Config => {
     if (!parsedConfig || (parsedConfig as Config).version !== 3) {
-        logError('This configuration is not v3. Preserve it for migration before using this version.')
+        throw new MintableError(
+            'configuration',
+            'This configuration is not v3. Preserve it for migration before using this version.'
+        )
     }
     const configSchema = getConfigSchema()
 
     // Validate parsed configuration object against generated JSON schema
-    try {
-        const validator = new Ajv()
-        const valid = validator.validate(configSchema, parsedConfig)
-
-        if (!valid) {
-            logError('Unable to validate configuration.', validator.errors)
-        }
-    } catch (e) {
-        logError('Unable to validate configuration.', e)
+    const validator = new Ajv()
+    if (!validator.validate(configSchema, parsedConfig)) {
+        const fields = (validator.errors || []).map(error => error.instancePath || error.schemaPath).join(', ')
+        throw new MintableError('configuration', `Unable to validate configuration: ${fields}.`)
     }
 
     const validatedConfig = parsedConfig as Config
+    try {
+        validateTransactionRules(validatedConfig.transactions.rules)
+    } catch (e) {
+        throw new MintableError('configuration', (e as Error).message, { cause: e })
+    }
     logInfo('Successfully validated configuration.')
     return validatedConfig
 }
@@ -184,11 +209,12 @@ export const writeConfig = (source: ConfigSource, config: Config): void => {
             writeFileAtomic(source.path, jsonc.stringify(config, null, 2))
             logInfo('Successfully wrote configuration file.')
         } catch (e) {
-            logError('Unable to write configuration file.', e)
+            throw new MintableError('configuration', `Unable to write configuration file ${source.path}.`, { cause: e })
         }
     }
     if (source.type === 'environment') {
-        logError(
+        throw new MintableError(
+            'configuration',
             'Node does not have permissions to modify global environment variables. Please use file-based configuration to make changes.'
         )
     }
@@ -201,7 +227,7 @@ export const updateConfig = (configTransformer: ConfigTransformer, initialize?: 
     const configSource = getConfigSource()
 
     if (initialize) {
-        newConfig = configTransformer(DEFAULT_CONFIG)
+        newConfig = configTransformer(JSON.parse(JSON.stringify(DEFAULT_CONFIG)) as Config)
     } else {
         const configString = readConfig(configSource)
         const oldConfig = parseConfig(configString) as Config

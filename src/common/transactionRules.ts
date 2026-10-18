@@ -1,10 +1,23 @@
 import { Account } from '../types/account'
 import { Transaction, TransactionRule } from '../types/transaction'
 
+export const validateTransactionRules = (rules: TransactionRule[] = []): void => {
+    for (let index = 0; index < rules.length; index++) {
+        const rule = rules[index]
+        try {
+            for (const condition of rule.conditions) new RegExp(condition.pattern, condition.flags)
+            if (rule.type === 'override') new RegExp(rule.findPattern, rule.flags)
+        } catch (_) {
+            throw new Error(`Transaction rule ${index + 1} contains an invalid regular expression or flags.`)
+        }
+    }
+}
+
 export const applyTransactionRules = (
     accounts: Account[],
     rules: TransactionRule[]
 ): { accounts: Account[]; countOverridden: number } => {
+    validateTransactionRules(rules)
     let countOverridden = 0
     const updated = accounts.map(account => ({
         ...account,

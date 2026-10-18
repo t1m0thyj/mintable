@@ -1,321 +1,111 @@
-# Mintable documentation
+# Mintable v3 guide
 
-Mintable imports balances and transactions through Teller or CSV files, then exports to Google Sheets or CSV files. Use Node 24 or newer.
+Mintable needs Node 24 or newer. This fork is a local release candidate until its repository and npm package identity are chosen. Install the packed checkout as described in the [root README](../README.md); the existing `mintable` npm package belongs to the original project.
 
-## Fresh setup
+## First run
 
-```bash
-npm install -g mintable
-mintable setup
-mintable fetch
+Run `mintable setup`, choose Teller or CSV import, and choose Google Sheets or CSV export. Then run `mintable fetch`. The default configuration is `~/mintable.jsonc`. Use `--config-file /absolute/path/config.jsonc` with every command if you keep it elsewhere. `--config-variable NAME` reads JSONC from an environment variable for commands that do not modify configuration; setup and token refresh need a writable file. A relative `--config-file` path resolves from the current directory. Teller certificate paths in a file configuration resolve from that configuration file's directory, and `~` expands to your home directory. Absolute Windows paths work on Windows.
+
+The configuration contains Teller enrollment tokens and possibly Google refresh tokens. Keep it and its backups private. Mintable writes configuration files atomically with private permissions where the operating system supports them.
+
+## Teller connection and coverage
+
+Create a Teller application and obtain its application ID, client certificate, and private key. Run `mintable teller-setup` to select sandbox, development, or production and enter those paths. Run `mintable account-setup` to open the local linking page. Link institutions, select the desired accounts, then select **Done linking accounts**. `mintable teller-account-setup` is an alias. Add `--port=8000` if you need a particular local port.
+
+Teller's [sandbox](https://teller.io/docs/guides/environments) has simulated data. Development connects to real banks, is currently free, and has a 100-enrollment limit. Production connects to real banks and is paid. A single enrollment can contain several accounts. Mintable handles Teller [depository and credit account types](https://teller.io/docs/api/accounts). It requires a transactions link for each selected account and uses balances when that link is available. Institution support and historical coverage vary; verify your intended checking, savings, and credit accounts during development. Older than six months of transactions may be unavailable. Mintable keeps older previously exported Teller months when a later fetch returns less history.
+
+If the certificate expires or is replaced, obtain the replacement from Teller, update the certificate and key paths with `mintable teller-setup`, then run a fetch against a disposable destination. The certificate and key must match. On a scheduler, ensure the scheduler's user can read both files. `TELLER_CERTIFICATE_FILE` and `TELLER_PRIVATE_KEY_FILE` override configuration paths for that process. To repair a disconnected enrollment, run `mintable account-setup` and choose **Repair connection**. Removing an account from Mintable removes its local configuration; revoke bank access separately through Teller when needed.
+
+## CSV fallback
+
+Choose CSV import during `mintable setup`, or run `mintable csv-import-setup` later. Point it at statement files or a glob, then edit that account's `transformer` in the config to map source headers to `date`, `amount`, and `name`. Set `dateFormat` to the source file's actual format, such as `MM/dd/yyyy`. Templates in [`docs/templates`](./templates) illustrate common mappings. A missing file, invalid date, or invalid amount stops the fetch before any output changes. Use CSV for a bank that Teller does not support, and check for duplicate transactions if you also import the same account through Teller.
+
+Choose CSV export or run `mintable csv-export-setup` for local output. Set distinct transaction and balance CSV paths. Transaction dates default to `yyyy-MM-dd`; amounts remain numeric CSV fields. Text that spreadsheet software could interpret as a formula receives a leading apostrophe. Exports replace files atomically. For a complete history across a migration boundary, use the reconciliation workflow below.
+
+## Google Sheets
+
+Run `mintable google-setup` after creating a spreadsheet. Enable the Sheets API in your Google Cloud project and create a **Desktop app** OAuth client. The wizard opens a browser and listens on a temporary `127.0.0.1` callback port. It validates state, uses PKCE, and requests offline access. If access is revoked or expires, run `mintable google-setup` again. Configure the consent screen for its actual audience. An External app left in Testing receives a seven-day refresh token for the Sheets scope, so unattended use requires the appropriate publishing configuration. See [Google's desktop OAuth guide](https://developers.google.com/identity/protocols/oauth2/native-app) and [token expiration rules](https://developers.google.com/identity/protocols/oauth2).
+
+Mintable owns the configured transaction and balance columns plus `_mintable_key`. Put formulas and annotations to the right of that key. Repeated fetches keep a transaction's row stable; removed generated rows retain a retired key and user columns for review. A partial-month fetch merges with stored rows. A complete month can retire absent generated rows for accounts fetched successfully. Historical Teller months and transactions from removed accounts remain. An old unkeyed sheet needs a new destination or a reviewed conversion before this writer changes it. Same-spreadsheet templates must already have the keyed layout; precreate cross-spreadsheet templates in the destination. `monthTabFormat` controls tab names, and `transactionDateFormat` controls full dates; their defaults are `yyyy.MM` and `yyyy-MM-dd`.
+
+## Scheduling
+
+Run one manual `mintable fetch --config-file ABSOLUTE_CONFIG_PATH` successfully before scheduling. Keep the machine online and the certificate paths accessible to the scheduled user.
+
+### Windows Task Scheduler
+
+Run `where.exe mintable` in PowerShell and note the absolute executable path. Open **Task Scheduler** → **Create Basic Task**, choose a daily or other interval, select **Start a program**, set **Program/script** to that executable path, and set **Add arguments** to `fetch --config-file "C:\path\to\mintable.jsonc"`. In task properties, choose the intended user account and a working directory if you rely on relative CSV paths. Test with **Run**, then inspect **Last Run Result** and your output files. [Microsoft's Task Scheduler documentation](https://learn.microsoft.com/en-us/windows/win32/taskschd/schtasks) describes the available schedules and diagnostics.
+
+### macOS and Linux
+
+Use `command -v mintable` to find the executable. Add a cron entry with absolute executable and config paths, for example:
+
+```text
+0 8 * * * /absolute/path/to/mintable fetch --config-file /absolute/path/to/mintable.jsonc
 ```
 
-The wizard asks whether to connect banks with Teller or use CSV files only, then asks for Google Sheets or CSV output. Teller development and production connect to real bank data; sandbox uses test data. Development is the default. Teller development and production require a client certificate, private key, and application ID. The CSV-only option requires no Teller account.
+Run the same command manually as the scheduled user. A cron environment has a smaller `PATH` than an interactive shell. Keep the config, certificate, and key readable by that user.
 
-The account linking page opens in your browser after its local server starts. It lists linked accounts, lets you link additional institutions and choose multiple accounts from each enrollment, and offers a **Repair connection** action for an existing enrollment. Select **Done linking accounts** to finish, or **Cancel setup** to stop. The local server uses an available port by default; use `mintable account-setup --port=8000` to choose one. Removing an account only removes its local Mintable configuration. To revoke bank access, use Teller's own controls separately.
+### Opt-in GitHub Actions
 
-## Commands
+The `Test` workflow runs fixture-only checks on pushes and pull requests. The `Fetch` workflow runs only on manual dispatch until a maintainer enables its commented schedule on the default branch. It allows one live fetch at a time. Configure these repository secrets for a Teller fetch:
 
-- `mintable setup`: create a fresh v3 configuration.
-- `mintable teller-setup`: edit Teller application settings.
-- `mintable account-setup`: link, repair, or remove Teller accounts. `teller-account-setup` is an alias.
-- `mintable csv-import-setup`: add a CSV account.
-- `mintable csv-export-setup`: select CSV output.
-- `mintable google-setup`: select Google Sheets output.
-- `mintable fetch`: fetch accounts and update the selected output.
+| Secret | Value |
+| --- | --- |
+| `MINTABLE_CONFIG` | Full v3 JSONC configuration; use a disposable Google or CSV destination for initial validation. |
+| `TELLER_CERTIFICATE_PEM` | Entire client certificate PEM. |
+| `TELLER_PRIVATE_KEY_PEM` | Entire matching private key PEM. |
 
-Plaid is no longer a live provider. Existing Plaid credentials cannot be reused as Teller credentials. See [Migrating existing data](#migrating-existing-data) before using an old configuration with v3.
-
-## Configuration example
-
-A fresh CSV-only setup can produce a configuration shaped like this (the wizard adds CSV import and export details):
-
-```json
-{
-  "version": 3,
-  "integrations": {},
-  "enrollments": {},
-  "accounts": {},
-  "transactions": { "integration": "csv-export", "properties": ["date", "amount", "name", "account", "category"] },
-  "balances": { "integration": "csv-export", "properties": ["institution", "account", "type", "current", "available", "limit", "currency"] }
-}
-```
-
-A Teller account references an `enrollmentId` in `enrollments`. The enrollment holds the access token once. Treat your configuration and backups as private credentials.
+The workflow writes all three secrets to private temporary files, sets the Teller path overrides, and removes them when the fetch ends. The config file in a runner is temporary, so a newly rotated Google refresh token is not saved back to the repository secret. Reconnect locally and update `MINTABLE_CONFIG` if unattended Google authorization stops working. A remote runner needs network access to Teller and Google; CSV destinations on its local disk are ephemeral. Use Google Sheets for durable cloud output.
 
 ## Migrating existing data
 
-`mintable migrate` accepts v1, v2 Plaid, v2 Teller fork, and mixed configurations. It never uses Plaid's SDK or relabels Plaid tokens. The first command only previews the conversion. It shows a review hash without printing credential values:
+Keep the old program, configuration, and outputs until the new destination is reviewed. Plaid credentials cannot be reused as Teller credentials. Mintable v3 imports from Teller or CSV.
+
+Preview conversion without modifying the source:
 
 ```bash
-mintable migrate --source-file /path/to/old/mintable.jsonc --output-config-file /path/to/new/mintable.v3.jsonc
+mintable migrate --source-file /absolute/old/mintable.jsonc --output-config-file /absolute/new/mintable.v3.jsonc
 ```
 
-Review the retained integrations, accounts, columns, rules, backup paths, and warnings. Then apply the exact preview:
+Review the preview and apply with its hash:
 
 ```bash
-mintable migrate --source-file /path/to/old/mintable.jsonc --output-config-file /path/to/new/mintable.v3.jsonc --apply --expect-sha256 REVIEW_HASH
+mintable migrate --source-file /absolute/old/mintable.jsonc --output-config-file /absolute/new/mintable.v3.jsonc --apply --expect-sha256 REVIEW_HASH
 ```
 
-For a configuration in an environment variable, use `--source-env MINTABLE_CONFIG --output-config-file /path/to/new/mintable.v3.jsonc`. The output file is required; Mintable does not change the parent environment. Apply writes a separate v3 file atomically and makes private source and existing CSV output backups. Running the same apply again is safe when the preview is unchanged. Keep the old program and configuration until you have verified the new output. Backups may contain live bank and Google credentials, so keep them private.
+For an environment-based old config, use `--source-env MINTABLE_CONFIG` instead of `--source-file`. Apply writes a separate pending v3 file and private backups. It does not change the original. Configure Teller against the new file with `mintable teller-setup --config-file NEW_FILE`, then use `mintable account-setup --config-file NEW_FILE`. The pending config cannot fetch.
 
-The new v3 file begins in `pending` state. `mintable fetch` will refuse to export from it. Configure Teller with `mintable teller-setup --config-file=/path/to/new/mintable.v3.jsonc`, then link accounts with `mintable account-setup --config-file=/path/to/new/mintable.v3.jsonc`. CSV import accounts, export settings, transaction rules, templates, and custom columns are carried forward. Plaid accounts need Teller reconnection. A Teller fork account with no recoverable enrollment ID is listed for reconnection. An unsupported bank account can remain in the old archive or be represented through CSV.
-
-Create an account mapping JSON file. Give each old bank or CSV account a stable local identity and a new target, or mark it `archive` if it will not be imported. This makes keeping a legacy CSV source alongside Teller an explicit choice:
+Create an account mapping JSON file. Every legacy account needs a stable local ID and an explicit Teller or CSV target, or `archive`:
 
 ```json
 {
-  "plaid:old-account-id": { "localAccountId": "checking", "target": "teller:acc_new_id" },
-  "plaid:unsupported-id": { "localAccountId": "legacy-only", "target": "archive" },
+  "plaid:old-checking": { "localAccountId": "checking", "target": "teller:acc_new_id" },
+  "plaid:unsupported": { "localAccountId": "unsupported", "target": "archive" },
   "csv:Manual": { "localAccountId": "manual", "target": "csv:Manual" }
 }
 ```
 
-Choose a **new destination** for Teller output. If the old output is Google Sheets, manually duplicate the original spreadsheet as an archive, create a separate empty destination spreadsheet, and review formulas and account/category references. The existing Google authorization only requested a Sheets scope; copying a whole file through Drive requires a Drive scope, so Mintable asks for the archive copy's ID instead of attempting an incomplete copy. [Google Drive's file-copy scope requirements](https://developers.google.com/workspace/drive/api/reference/rest/v3/files/copy). Mintable checks that the three IDs differ, but you must verify that the archive is a complete copy and that the new destination is empty.
-
-Preview activation with all mappings and destinations:
+Choose a new output destination. For Google, duplicate the old spreadsheet as an archive and create a separate empty destination. Review formulas and account/category references in the new spreadsheet. The existing Sheets scope cannot copy a whole spreadsheet through Drive. Preview activation:
 
 ```bash
-mintable migrate --activate --config-file /path/to/new/mintable.v3.jsonc --account-map-file /path/to/account-map.json --cutover-month 2026-11 --new-google-sheet-id NEW_ID --google-archive-id ARCHIVE_ID --reviewed-formulas --empty-google-destination
+mintable migrate --activate --config-file NEW_FILE --account-map-file MAP_FILE --cutover-month 2026-11 --new-google-sheet-id NEW_ID --google-archive-id ARCHIVE_ID --reviewed-formulas --empty-google-destination
 ```
 
-For CSV output, replace the Google options with `--new-transactions-csv /absolute/new-transactions.csv --new-balances-csv /absolute/new-balances.csv`. Both paths must be new and distinct. To apply activation, repeat the preview command with `--apply --expect-sha256 CONFIG_HASH` from its output. Activation backs up the pending v3 config before changing it. The original Google sheet, CSV outputs, legacy config, and backups remain unchanged. Use the new v3 config with `--config-file` only after inspecting the new destination. To roll back, use your old Mintable version and unchanged legacy config and output.
+For CSV output, replace the Google options with `--new-transactions-csv ABSOLUTE_NEW_TRANSACTIONS.csv --new-balances-csv ABSOLUTE_NEW_BALANCES.csv`. Apply activation by repeating the preview with `--apply --expect-sha256 CONFIG_HASH`. Check the first new fetch in the disposable destination against statements before making it your regular output.
 
-For a **continuous CSV history**, export both histories with full dates, `accountId`, and `transactionId` columns. The old defaults often omitted IDs; Mintable will block automatic reconciliation if they are absent. Set a complete-month boundary after the final month represented in the old output. Record your review of every active account in a separate JSON file:
+To build a continuous CSV history, export old and new transactions with full dates, `accountId`, and `transactionId`. Mintable blocks automatic reconciliation when IDs or a complete-month boundary are missing. Record reviewed local account IDs in a JSON file:
 
 ```json
 { "cutoverMonth": "2026-11", "localAccountIds": ["checking"] }
 ```
 
-Run `mintable reconcile` with `--old-csv OLD.csv --new-csv NEW.csv --account-map-file account-map.json --complete-month-file complete.json --output-csv merged.csv --cutover-month 2026-11`. The preview reports ignored new rows before cutover, possible cross-provider matches, and blockers. Apply using `--apply --expect-sha256 REVIEW_HASH`. The output is a new CSV with stable `mintableLocalAccountId` and provider-qualified `mintableSourceKey` columns. Mintable never treats matching date, amount, and description as proof of identity, never merges an overlapping month automatically, and never overwrites either input. Import the reviewed result into a separate destination; do not point the old monthly writer at it. Google history requires a separately reviewed export/import because formulas and annotations may depend on row positions.
+Run `mintable reconcile --old-csv OLD.csv --new-csv NEW.csv --account-map-file MAP_FILE --complete-month-file COMPLETE.json --output-csv MERGED.csv --cutover-month 2026-11`. Review the preview, then add `--apply --expect-sha256 REVIEW_HASH`. Reconciliation writes a new file and preserves both inputs. Google annotations and formulas need a separately reviewed export/import.
 
-## Importing account balances and transactions
+### Rollback check
 
-### Teller
+Before cutover, run the old version once against a **copy** of its old configuration and output. Then run the new version against its distinct destination. Confirm the old output has not changed during the new fetch. To roll back, disable the new schedule, restore the old schedule and old program, and use the unchanged old config and original output. Do not point either writer at the other's destination. The migration tests exercise pending-state blocking, backups, distinct destinations, activation, and unchanged old files; the live rollback rehearsal still requires your actual data and credentials.
 
-Run `mintable teller-setup` to set the environment and application credentials, then `mintable account-setup` to connect banks. Teller Connect requests the `balance` and `transactions` products. You can repair a disconnected enrollment from the same account setup page.
+## Development and release
 
-### Manually – on your local machine – via CSV bank statements
-
-You can run:
-
-```bash
-mintable csv-import-setup
-```
-
-to enter the CSV import setup wizard. This will allow you to manually import files or globs (`path/to/my/folder/transactions/*.csv`) every time `mintable fetch` is run.
-
-You'll need to define a transformer to map properties in your source CSV spreadsheet to valid Mintable transaction properties, and a valid date format.
-
-We have a number of templates available for popular financial institutions to get you started:
-
-- [Apple Card](./templates/apple-card.json)
-- [Discover Card](./templates/discover-card.json)
-- [Venmo](./templates/venmo.json)
-- [Chase](./templates/chase.json)
-- [American Express](./templates/american-express.json)
-- [Rogers Bank Credit Card](./templates/rogers-bank-credit-card.json)
-
-These templates can be added into the `accounts` section of your `mintable.jsonc` configuration file.
-
-> **Note:** CSV Imports do not support account balances.
-
----
-
-## Exporting Account Balances & Transactions
-
-### In the cloud – via [Google Sheets](https://www.google.com/sheets/about/)
-
-You can run:
-
-```bash
-mintable google-setup
-```
-
-to enter the Google Sheets setup wizard. This will allow you to automatically update a sheet with your transactions/account balances every time `mintable fetch` is run.
-
-> **Note:** Google Sheets is the default export integration and this step is not necessary if you've already run `mintable setup`.
-
-Create a **Desktop app** OAuth client and enable the Sheets API in its Google Cloud project. `mintable google-setup` opens the system browser and receives the callback on `127.0.0.1`; it requests offline access and stores the refresh token in the configuration file. For unattended use, configure the consent screen for your actual audience and publish an External app to Production when ready. An External app left in Testing receives a seven-day refresh token for the Sheets scope. If the token expires or is revoked, run `mintable google-setup` again. See [Google's desktop OAuth guide](https://developers.google.com/identity/protocols/oauth2/native-app) and [refresh-token expiration rules](https://developers.google.com/identity/protocols/oauth2).
-
-Mintable owns the configured transaction and balance columns plus the `_mintable_key` column. Put formulas and annotations **to the right** of this key. Existing keyed transactions keep their row on later fetches, so these cells stay with the same transaction. Obsolete rows have only Mintable-owned cells cleared and retain a retired key; their user columns remain for review. A partial month's fetch merges new rows with stored keyed rows. Only a month fetched from its first through last day for every configured account retires missing rows; history from removed accounts stays in place. Teller months older than five months before the current month also merge because older provider history may be incomplete. An incomplete account fetch stops before any export. Existing unkeyed sheets require a new destination or a reviewed conversion before this writer will change them. A same-spreadsheet template must have the keyed column layout; cross-spreadsheet templates must be precreated in the destination.
-
-`monthTabFormat` controls tab names (default `yyyy.MM`); `transactionDateFormat` controls full transaction dates (default `yyyy-MM-dd`). The older `dateFormat` setting remains an alias for month tab names. Generated text is written as literal text and amounts as numbers. CSV exports also default to full dates and prefix text that spreadsheet software could interpret as formulas.
-
-### On your local machine – via CSV files
-
-You can run:
-
-```bash
-mintable csv-export-setup
-```
-
-to enter the CSV export setup wizard. This will allow you to manually export a CSV containing your transactions/account balances every time `mintable fetch` is run.
-
----
-
-## Updating Transactions/Accounts
-
-### Manually – in your local machine's terminal
-
-After you have connected a banking institution, you can run:
-
-```bash
-mintable fetch
-```
-
-to automate updates to your spreadsheet.
-
-### Automatically – in your Mac's Menu Bar – via [BitBar](https://github.com/matryer/bitbar#get-started)
-
-You can put Mintable in your Mac's menu bar, and have it run automatically every hour using our [BitBar Plugin](https://github.com/matryer/bitbar-plugins/pull/1460).
-
-![BitBar](./img/bitbar.png)
-
-1. [Install BitBar](https://github.com/matryer/bitbar/releases) on your Mac.
-2. Set your plugin folder.
-3. Create a new file in `mintable.1h.zsh` in your plugin folder.
-4. Copy & paste [this](https://github.com/matryer/bitbar-plugins/blob/39e8f252ed69d0dd46bbe095299e52279e86d737/Finance/mintable.1h.zsh) into the file you just created and save.
-5. Open **BitBar** > **Preferences** > **Refresh All** to update your spreadsheet.
-
-> **Note:** The plugin above is pending approval and this install process should be much easier moving forward.
-
-### Automatically – in your local machine's terminal – via `cron`
-
-You can run Mintable automatically within your terminal using `cron`:
-
-![`cron`](./img/cron.png)
-
-```bash
-echo "0 * * * * export PATH="/usr/local/bin:$PATH" && mintable fetch" > ~/mintable.cron
-crontab ~/mintable.cron
-```
-
-The first step creates a new file `~/mintable.cron` which contains an interval and the command you want to run. The second step registers that file with `crontab`, the command-line executable which actually schedules the job with your operating system.
-
-The default refresh interval is 1 hour – you can use [Crontab Guru](https://crontab.guru/) to define your own interval.
-
-You can remove this schedule by running:
-
-```bash
-crontab -r
-```
-
-> **Note:** The instructions above assume your global `mintable` CLI lives in `/usr/local/bin`, but if your installation path is different (run `which mintable`) you should use that instead.
-
-### Automatically – in the cloud – via GitHub Actions
-
-You can use GitHub Actions to run Mintable automatically in the cloud:
-
-![GitHub Actions](./img/github-actions.png)
-
-1. Fork [this repo](https://github.com/kevinschaich/mintable).
-2. Go to your repo's **Actions** > Click **I understand my workflows, go ahead and enable them**
-3. Go to your repo's **Settings** > **Secrets** and add a **New Secret**.
-4. Name the secret `MINTABLE_CONFIG`, and copy and paste the full contents of your `~/mintable.jsonc` file into the body of the secret.
-5. In your repo's `./.github/workflows/fetch.yml`, uncomment the following block and commit the changes:
-
-    ```
-        # schedule:
-        #   - cron:  '0 * * * *'
-    ```
-
-In the **Actions** tab of your repo, the **Fetch** workflow will now update your sheet periodically. The default refresh interval is 1 hour – you can use [Crontab Guru](https://crontab.guru/) to define your own interval.
-
-> **Note:** The minimum interval supported by GitHub Actions is every 5 minutes.
-
----
-
-## Transaction Rules
-
-### Transaction `filter` Rules
-
-Transaction `filter` rules allow you to exclude transactions from your spreadsheet based on a set of [conditions](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_Expressions).
-
-For example, if you wanted to exclude any cross-account transfers, you might add the following to your `transactions.rules` config:
-
-```json
-"rules": [
-    {
-        "conditions": [
-            {
-                "property": "name",
-                "pattern": "(transfer|xfer|trnsfr)",
-                "flags": "ig"
-            }
-        ],
-        "type": "filter"
-    }
-]
-```
-
-### Transaction `override` Rules
-
-Transaction `override` rules allow you to override auto-populated fields based on a set of [conditions](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_Expressions), search for a [pattern](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_Expressions), and replace it with another [pattern](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_Expressions).
-
-You might want to do this to standardize values between financial institutions (`XFER` -> `Transfer`), or tune things to suit your particular budgeting needs (described below).
-
-For example, let's say you want to know how much you are spending on coffee each month, but your bank categorizes your favorite shops as `Restaurants – Fast Food`. You might add the following to your `transactions.rules` config:
-
-```json
-"rules": [
-    {
-        "conditions": [
-            {
-                "property": "name",
-                "pattern": "(dunkin|starbucks|peets|philz)",
-                "flags": "ig"
-            }
-        ],
-        "type": "override",
-        "property": "category",
-        "findPattern": "Fast Food",
-        "replacePattern": "Coffee Shops",
-        "flags": "i"
-    }
-]
-```
-
-When you run `mintable fetch` the next time, the category would be `Restaurants – Coffee Shops`.
-
-## Development
-
-To get started:
-
-```bash
-git clone https://github.com/kevinschaich/mintable
-cd mintable
-
-npm install
-npm run build
-npm link
-```
-
-The global `mintable` command will now point to your local version (`/lib/scripts/cli.js`). To start compilation in watch mode:
-
-```bash
-npm run watch
-```
-
-To publish a new version, increment `version` in `package.json` and run:
-
-```bash
-git add package.json
-git commit -m 'vX.X.X'
-git push
-
-rm -rf lib/
-npm run build
-npm publish
-```
-
-To revert to the production release of `mintable`, run:
-
-```bash
-npm unlink
-npm install -g mintable
-```
-
-## Contributing
-
-Before posting please check if your issue has already been reported. We'll gladly accept PRs, feature requests, or bugs via [Issues](https://github.com/kevinschaich/mintable/issues).
+Run `npm ci`, `npm test`, and `npm pack --dry-run`. The fixture suite has no bank credentials. The [release checklist](./release-v3.md) covers packed installs, live depository and credit comparison, repository and package identity, and publication. This fork preserves the original project's [MIT attribution](../LICENSE).

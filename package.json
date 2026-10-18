@@ -2,7 +2,8 @@
     "name": "mintable",
     "author": "Kevin Schaich <schaich.kevin@gmail.com> (http://kevinschaich.io)",
     "license": "MIT",
-    "version": "2.0.3",
+    "version": "3.0.0-rc.1",
+    "private": true,
     "bin": "./lib/scripts/cli.js",
     "preferGlobal": true,
     "engines": {
@@ -17,10 +18,14 @@
         "prepack": "npm run build"
     },
     "files": [
-        "src",
         "lib",
-        "docs",
-        "tsconfig.json"
+        "src/integrations/teller/account-setup.html",
+        "src/integrations/teller/account-setup.js",
+        "docs/README.md",
+        "docs/release-v3.md",
+        "docs/templates",
+        "docs/css/account-setup.css",
+        "docs/img/icon.png"
     ],
     "dependencies": {
         "ajv": "8.20.0",
@@ -48,16 +53,11 @@
         "typescript": "5.9.3",
         "typescript-json-schema": "0.68.0"
     },
-    "description": "Automate your personal finances – for free, with no ads, and no data collection.",
-    "repository": {
-        "type": "git",
-        "url": "git+https://github.com/kevinschaich/mintable.git"
-    },
+    "description": "Self-hosted personal finance imports from Teller or CSV to Google Sheets or CSV.",
     "keywords": [
         "finance",
         "finance-management",
         "personal-finance",
-        "mint",
         "sheets-api",
         "google-sheets",
         "google-sheets-api",
@@ -66,7 +66,6 @@
         "analytics",
         "tracker",
         "finance-tracker",
-        "personal-capital",
         "spreadsheet",
         "mintable",
         "money",
@@ -74,9 +73,5 @@
         "budgeting",
         "budget-management",
         "javascript"
-    ],
-    "bugs": {
-        "url": "https://github.com/kevinschaich/mintable/issues"
-    },
-    "homepage": "https://github.com/kevinschaich/mintable#readme"
+    ]
 }

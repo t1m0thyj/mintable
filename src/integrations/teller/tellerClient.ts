@@ -4,6 +4,7 @@ import https, { Agent, RequestOptions } from 'https'
 import { ClientRequest, IncomingMessage } from 'http'
 import { createSecureContext } from 'tls'
 import { TellerConfig } from '../../types/integrations/teller'
+import { resolveConfigRelativePath } from '../../common/config'
 
 export const TELLER_API_ORIGIN = 'https://api.teller.io'
 export const TELLER_API_VERSION = '2020-10-12'
@@ -57,8 +58,8 @@ const readCredentials = (config: TellerConfig): { cert?: Buffer; key?: Buffer } 
         throw new TellerError('configuration', 'Teller requires both a client certificate file and private key file.')
     }
     try {
-        const cert = readFileSync(certPath)
-        const key = readFileSync(keyPath)
+        const cert = readFileSync(resolveConfigRelativePath(certPath))
+        const key = readFileSync(resolveConfigRelativePath(keyPath))
         const certificate = new X509Certificate(cert)
         const privateKey = createPrivateKey(key)
         if (
