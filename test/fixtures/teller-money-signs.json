@@ -1,0 +1,12 @@
+[
+    { "scenario": "depository purchase", "accountType": "depository", "amount": "-12.34", "expected": 12.34 },
+    { "scenario": "depository refund", "accountType": "depository", "amount": "5.25", "expected": -5.25 },
+    { "scenario": "depository deposit", "accountType": "depository", "amount": "100.00", "expected": -100 },
+    { "scenario": "depository withdrawal", "accountType": "depository", "amount": "-20.00", "expected": 20 },
+    { "scenario": "depository outgoing transfer", "accountType": "depository", "amount": "-40.00", "expected": 40 },
+    { "scenario": "depository incoming transfer", "accountType": "depository", "amount": "40.00", "expected": -40 },
+    { "scenario": "credit purchase", "accountType": "credit", "amount": "30.00", "expected": 30 },
+    { "scenario": "credit refund", "accountType": "credit", "amount": "-5.00", "expected": -5 },
+    { "scenario": "credit card payment", "accountType": "credit", "amount": "-30.00", "expected": -30 },
+    { "scenario": "zero", "accountType": "credit", "amount": "0.00", "expected": 0 }
+]

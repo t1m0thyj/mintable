@@ -1,55 +1,38 @@
 import path from 'path'
-import { compareAsc, parseISO, subMonths } from 'date-fns'
+import { format, subDays, subMonths } from 'date-fns'
 import { Config, updateConfig } from '../../common/config'
 import { TellerConfig, TellerTransaction } from '../../types/integrations/teller'
 import { IntegrationId } from '../../types/integrations'
 import express from 'express'
 import bodyParser from 'body-parser'
-import { logInfo, logError, logWarn } from '../../common/logging'
+import { logInfo, logWarn } from '../../common/logging'
 import http from 'http'
-import https from 'https'
 import { AccountConfig, Account, TellerAccountConfig } from '../../types/account'
-import { Transaction } from '../../types/transaction'
-import { readFileSync } from 'fs'
+import { TellerClient, TellerError } from './tellerClient'
+import {
+    normalizeTellerAccount,
+    normalizeTellerTransaction,
+    parseTellerAccount,
+    parseTellerBalances,
+    parseTellerTransactions
+} from './tellerNormalizer'
+
+const PAGE_SIZE = 100
+const MAX_PAGES = 1000
 
 export class TellerIntegration {
     config: Config
     tellerConfig: TellerConfig
+    client: Pick<TellerClient, 'requestJson'>
 
-    constructor(config: Config) {
+    constructor(config: Config, client?: Pick<TellerClient, 'requestJson'>) {
         this.config = config
         this.tellerConfig = this.config.integrations[IntegrationId.Teller] as TellerConfig
+        this.client = client || new TellerClient(this.tellerConfig)
     }
 
-    public tellerApi = (token: string, path: string, method = 'GET', body?: any): Promise<any> => {
-        return new Promise((resolve, reject) => {
-            const req = https.request(
-                `https://api.teller.io/${path}`,
-                {
-                    method,
-                    auth: `${token}:`,
-                    cert: readFileSync(this.tellerConfig.pathCertificate),
-                    key: readFileSync(this.tellerConfig.pathPrivateKey)
-                },
-                res => {
-                    const resData = []
-                    res.on('data', chunk => resData.push(chunk))
-                    res.on('end', () => {
-                        const resString = Buffer.concat(resData).toString()
-                        resolve(JSON.parse(resString))
-                    })
-                }
-            )
-            req.on('error', e => {
-                logError(`tellerApi encountered https request error: ${e.message}`, e)
-                reject(e)
-            })
-            if (body) {
-                req.write(body)
-            }
-            req.end()
-        })
-    }
+    public tellerApi = (token: string, route: string, method: 'GET' | 'POST' | 'DELETE' = 'GET', body?: string) =>
+        this.client.requestJson(token, route, method, body)
 
     public registerAccount = (accessToken: string, accountId: string): void => {
         updateConfig(config => {
@@ -64,7 +47,7 @@ export class TellerIntegration {
     }
 
     public accountSetup = (): Promise<void> => {
-        return new Promise(resolve => {
+        return new Promise((resolve, reject) => {
             const app = express()
                 .use(bodyParser.json())
                 .use(bodyParser.urlencoded({ extended: true }))
@@ -73,180 +56,143 @@ export class TellerIntegration {
             let server: http.Server
 
             app.post('/get_enrollment_accounts', async (req, res) => {
-                if (!req.body.enrollment || !req.body.enrollment.accessToken) {
-                    logError('Received invalid request body for /get_enrollment_accounts', req.body)
-                    res.status(401)
-                    return res.json({})
+                const token = req.body?.enrollment?.accessToken
+                if (typeof token !== 'string' || !token) return res.status(400).json({ error: 'Invalid enrollment.' })
+                try {
+                    const accounts = await this.tellerApi(token, 'accounts')
+                    return res.json(accounts)
+                } catch {
+                    return res.status(502).json({ error: 'Unable to load Teller accounts.' })
                 }
-
-                const accounts = await this.tellerApi(req.body.enrollment.accessToken, 'accounts')
-                return res.json(accounts)
             })
 
             app.post('/register_account', (req, res) => {
-                if (!req.body.accessToken || !req.body.accountId) {
-                    logError('Received invalid request body for /register_account', req.body)
-                    res.status(401)
-                    return res.json({})
+                if (typeof req.body?.accessToken !== 'string' || typeof req.body?.accountId !== 'string') {
+                    return res.status(400).json({ error: 'Invalid account selection.' })
                 }
-                this.registerAccount(req.body.accessToken, req.body.accountId)
-                resolve(logInfo('Teller access token saved for account.', req.body))
-                return res.json({})
+                try {
+                    this.registerAccount(req.body.accessToken, req.body.accountId)
+                    logInfo('Teller account saved.')
+                    return res.json({})
+                } catch {
+                    return res.status(500).json({ error: 'Unable to save Teller account.' })
+                }
             })
 
-            app.post('/accounts', async (req, res) => {
-                const accounts: { id: string; name: string; token: string }[] = []
-
-                for (const accountId in this.config.accounts) {
-                    const accountConfig: TellerAccountConfig = this.config.accounts[accountId] as TellerAccountConfig
-                    if (accountConfig.integration === IntegrationId.Teller) {
-                        const accountInfo = await this.tellerApi(accountConfig.token, `accounts/${accountConfig.id}`)
+            app.post('/accounts', async (_req, res) => {
+                const accounts: { id: string; name: string }[] = []
+                try {
+                    for (const accountId in this.config.accounts) {
+                        const accountConfig = this.config.accounts[accountId] as TellerAccountConfig
+                        if (accountConfig.integration !== IntegrationId.Teller) continue
+                        const raw = await this.tellerApi(
+                            accountConfig.token,
+                            `accounts/${encodeURIComponent(accountConfig.id)}`
+                        )
+                        const info = parseTellerAccount(raw, accountConfig.id)
                         accounts.push({
-                            id: accountConfig.id,
-                            name: accountInfo
-                                ? `${accountInfo.institution?.name} ${accountInfo.name} ${accountInfo.last_four}`
-                                : '-',
-                            token: accountConfig.token
+                            id: info.id,
+                            name: [info.institution?.name, info.name, info.last_four].filter(Boolean).join(' ')
                         })
                     }
+                    return res.json(accounts)
+                } catch {
+                    return res.status(502).json({ error: 'Unable to load saved Teller accounts.' })
                 }
-                return res.json(accounts)
             })
 
             app.post('/remove', (req, res) => {
                 try {
                     updateConfig(config => {
-                        if (config.accounts[req.body.accountId]) {
-                            delete config.accounts[req.body.accountId]
-                        }
+                        if (config.accounts[req.body.accountId]) delete config.accounts[req.body.accountId]
                         this.config = config
                         return config
                     })
-                    logInfo('Successfully removed Teller account.', req.body.accountId)
+                    logInfo('Successfully removed Teller account.')
                     return res.json({})
-                } catch (error) {
-                    logError('Error removing Teller account.', error)
+                } catch {
+                    return res.status(500).json({ error: 'Unable to remove Teller account.' })
                 }
             })
 
-            app.post('/done', (req, res) => {
+            app.post('/done', (_req, res) => {
                 res.json({})
                 server.close()
-                return resolve()
+                resolve()
             })
 
-            app.get('/', (req, res) =>
+            app.get('/', (_req, res) =>
                 res.sendFile(path.resolve(path.join(__dirname, '../../../src/integrations/teller/account-setup.html')))
             )
 
-            server = http.createServer(app).listen('8000')
+            server = http.createServer(app)
+            server.on('error', reject)
+            server.listen(8000, '127.0.0.1')
         })
     }
 
-    public fetchPagedTransactions = (
+    public fetchPagedTransactions = async (
         accountConfig: AccountConfig,
         startDate: Date,
-        endDate: Date
+        endDate: Date,
+        options: { incremental?: boolean } = {}
     ): Promise<TellerTransaction[]> => {
-        return new Promise((resolve, reject) => {
-            accountConfig = accountConfig as TellerAccountConfig
-            try {
-                return this.tellerApi(accountConfig.token, `accounts/${accountConfig.id}/transactions`).then(
-                    (ttxs: TellerTransaction[]) => {
-                        if (!ttxs.reduce) {
-                            logError('Received unexpected data from Teller transactions API', ttxs)
-                            throw new Error('Received unexpected data from Teller transactions API')
-                        }
-                        const filteredTtxs: TellerTransaction[] = ttxs.reduce((results, ttx) => {
-                            const ttxDate = parseISO(ttx.date)
-                            if (compareAsc(ttxDate, startDate) !== -1 && compareAsc(ttxDate, endDate) !== 1) {
-                                results.push(ttx)
-                            }
-                            return results
-                        }, [])
-                        logInfo(
-                            `Received ${ttxs.length} transactions. Will import ${filteredTtxs.length} transactions within date range.`
-                        )
-                        return resolve(filteredTtxs)
-                    }
-                )
-            } catch (e) {
-                logError(`fetchPagedTransactions encountered error: ${e instanceof Error ? e.message : String(e)}`, e)
-                return reject(e)
+        const tellerAccount = accountConfig as TellerAccountConfig
+        if (isNaN(startDate.getTime()) || isNaN(endDate.getTime()) || startDate > endDate) {
+            throw new TellerError('request', 'Teller transaction date range is invalid.')
+        }
+        const start = format(options.incremental ? subDays(startDate, 10) : startDate, 'yyyy-MM-dd')
+        const end = format(endDate, 'yyyy-MM-dd')
+        const base = `accounts/${encodeURIComponent(tellerAccount.id)}/transactions`
+        const results = new Map<string, TellerTransaction>()
+        const cursors = new Set<string>()
+        let cursor: string | undefined
+        for (let pageNumber = 0; pageNumber < MAX_PAGES; pageNumber++) {
+            const query = new URLSearchParams({ start_date: start, end_date: end, count: String(PAGE_SIZE) })
+            if (cursor) query.set('from_id', cursor)
+            const page = parseTellerTransactions(
+                await this.tellerApi(tellerAccount.token, `${base}?${query}`),
+                tellerAccount.id
+            )
+            if (page.length > PAGE_SIZE) {
+                throw new TellerError('malformed_response', 'Teller transaction page exceeded the requested count.')
             }
-        })
+            for (const transaction of page) {
+                if (transaction.date >= start && transaction.date <= end) results.set(transaction.id, transaction)
+            }
+            if (page.length < PAGE_SIZE) {
+                logInfo(`Received ${results.size} Teller transactions within the requested date range.`)
+                return [...results.values()]
+            }
+            const next = page[page.length - 1].id
+            if (cursors.has(next)) {
+                throw new TellerError('malformed_response', 'Teller repeated a transaction page cursor.')
+            }
+            cursors.add(next)
+            cursor = next
+        }
+        throw new TellerError('malformed_response', 'Teller transaction pagination exceeded the page limit.')
     }
 
     public fetchAccount = async (accountConfig: AccountConfig, startDate: Date, endDate: Date): Promise<Account[]> => {
-        accountConfig = accountConfig as TellerAccountConfig
+        const tellerAccount = accountConfig as TellerAccountConfig
         if (startDate < subMonths(new Date(), 5)) {
-            logWarn('Transaction history older than 6 months may not be available for some institutions.', {})
+            logWarn('Transaction history older than 6 months may not be available for some institutions.')
         }
-
-        const account: Account = {
-            integration: IntegrationId.Teller,
-            accountId: accountConfig.id,
-            account: accountConfig.id
+        const base = `accounts/${encodeURIComponent(tellerAccount.id)}`
+        const details = parseTellerAccount(await this.tellerApi(tellerAccount.token, base), tellerAccount.id)
+        if (!details.links.transactions) {
+            throw new TellerError('unsupported_resource', 'Teller transactions are unavailable for this account.')
         }
-
-        const accountInfo = await this.tellerApi(accountConfig.token, `accounts/${accountConfig.id}`)
-
-        if (accountInfo.error) {
-            logWarn(
-                'Could not fetch data for account from Teller. Authentication may be expired. Run: `mintable teller-account-setup`',
-                {}
-            )
-            throw new Error('Could not fetch data for account from Teller.')
-        }
-
-        if (accountInfo) {
-            account.institution = accountInfo.institution?.name
-            account.account = accountInfo.name
-            account.mask = accountInfo.last_four
-            account.type = accountInfo.subtype || accountInfo.type
-            account.currency = accountInfo.currency
-        }
-        const isCredit = accountInfo && accountInfo.type === 'credit'
-
-        const accountBalance = await this.tellerApi(accountConfig.token, `accounts/${accountConfig.id}/balances`)
-
-        if (accountBalance) {
-            account.current = accountBalance.ledger
-            account.available = accountBalance.available
-        }
-
-        const data = await this.fetchPagedTransactions(accountConfig, startDate, endDate)
-
-        if (!data || !data.map) {
-            logWarn(
-                `fetchAccount received unexpected response for transactions from ${account.institution} ${account.account}`,
-                data
-            )
-            return []
-        }
-
-        // With Teller, the amount value can be positive for both a purchase
-        // made with a credit card and a deposit made into a checking account.
-        // However in terms of a budget, a purchase should be a positive value
-        // and a deposit should have a negative value, so we normalize it here.
-        const transactions: Transaction[] = data.map(tt => ({
-            integration: IntegrationId.Teller,
-            name: tt.description,
-            date: parseISO(tt.date),
-            amount: !isCredit ? -1 * Number(tt.amount) : Number(tt.amount),
-            currency: account.currency,
-            type: tt.type,
-            institution: account.institution,
-            account: `${account.institution} ${account.account} ${account.mask}`,
-            accountId: tt.account_id,
-            transactionId: tt.id,
-            category: tt.details?.category,
-            pending: tt.status === 'pending'
-        }))
-
-        account.transactions = transactions
-
-        logInfo(`Fetched account with ${transactions.length} transactions.`, account)
+        const balances = details.links.balances
+            ? parseTellerBalances(await this.tellerApi(tellerAccount.token, `${base}/balances`), tellerAccount.id)
+            : undefined
+        const account = normalizeTellerAccount(details, balances)
+        const transactions = await this.fetchPagedTransactions(accountConfig, startDate, endDate)
+        account.transactions = transactions.map(transaction =>
+            normalizeTellerTransaction(transaction, account, details.type === 'credit')
+        )
+        logInfo(`Fetched Teller account with ${account.transactions.length} transactions.`)
         return [account]
     }
 }

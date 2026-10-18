@@ -7,6 +7,7 @@ export interface TellerConfig extends BaseIntegrationConfig {
     pathCertificate: string
     pathPrivateKey: string
     appId: string
+    environment?: 'sandbox' | 'development' | 'production'
 }
 
 export const defaultTellerConfig: TellerConfig = {
@@ -24,21 +25,40 @@ export interface TellerTransaction {
     amount: string
     date: string
     description: string
-    details: TellerTransactionDetails
-    status: string
+    details?: TellerTransactionDetails | null
+    status: 'posted' | 'pending'
     id: string
-    links: TellerTransactionLinks
-    running_balance?: string
+    links?: TellerTransactionLinks
+    running_balance?: string | null
     type: string
 }
 
 export interface TellerTransactionDetails {
-    category?: string
-    counterparty?: string
-    processing_status: string
+    category?: string | null
+    counterparty?: { name?: string | null; type?: string | null } | null
+    processing_status?: 'pending' | 'complete'
 }
 
 export interface TellerTransactionLinks {
     account: string
     self: string
+}
+
+export interface TellerAccount {
+    id: string
+    enrollment_id?: string
+    name: string
+    type: 'depository' | 'credit'
+    subtype?: string
+    currency: string
+    last_four?: string
+    status?: 'open' | 'closed'
+    institution?: { id?: string; name?: string }
+    links: { self?: string; balances?: string; transactions?: string; details?: string }
+}
+
+export interface TellerBalances {
+    account_id?: string
+    ledger?: string | null
+    available?: string | null
 }

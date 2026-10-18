@@ -16,8 +16,10 @@ const marchStart = new Date(2026, 2, 1)
 const marchEnd = new Date(2026, 2, 31)
 
 test('Teller date filter includes both month boundaries', async () => {
-    const teller = new TellerIntegration({ integrations: { teller: {} } })
-    teller.tellerApi = async () => tellerTransactions
+    const teller = new TellerIntegration(
+        { integrations: { teller: {} } },
+        { requestJson: async () => tellerTransactions }
+    )
     const result = await teller.fetchPagedTransactions({ id: 'checking', token: 'fixture' }, marchStart, marchEnd)
     assert.deepEqual(
         result.map(transaction => transaction.id),
@@ -33,11 +35,22 @@ test('existing Teller sign convention keeps spending positive for both account t
         ['credit', '-25.00', -25],
         ['credit', '0.00', 0]
     ]) {
-        const teller = new TellerIntegration({ integrations: { teller: {} } })
-        teller.tellerApi = async (_token, endpoint) => {
-            if (endpoint.endsWith('/balances')) return { ledger: '0.00', available: '0.00' }
-            return { name: 'Fixture', type: accountType, currency: 'USD', institution: { name: 'Bank' } }
-        }
+        const teller = new TellerIntegration(
+            { integrations: { teller: {} } },
+            {
+                requestJson: async (_token, endpoint) => {
+                    if (endpoint.endsWith('/balances')) return { ledger: '0.00', available: '0.00' }
+                    return {
+                        id: 'account',
+                        name: 'Fixture',
+                        type: accountType,
+                        currency: 'USD',
+                        institution: { name: 'Bank' },
+                        links: { balances: '/balances', transactions: '/transactions' }
+                    }
+                }
+            }
+        )
         teller.fetchPagedTransactions = async () => [
             {
                 id: 'item',

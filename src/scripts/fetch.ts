@@ -22,6 +22,7 @@ export default async () => {
     let endDate = config.transactions.endDate ? parseISO(config.transactions.endDate) : new Date()
 
     let accounts: Account[] = []
+    let teller: TellerIntegration | undefined
 
     for (const accountId in config.accounts) {
         const accountConfig = config.accounts[accountId]
@@ -40,7 +41,7 @@ export default async () => {
                 break
 
             case IntegrationId.Teller:
-                const teller = new TellerIntegration(config)
+                teller = teller || new TellerIntegration(config)
                 accounts = accounts.concat(await teller.fetchAccount(accountConfig, startDate, endDate))
                 break
 

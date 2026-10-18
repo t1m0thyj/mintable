@@ -8,8 +8,12 @@ export interface Transaction {
     name: string
     // date of transaction
     date: Date
+    // Original date-only value supplied by the bank, before timezone conversion.
+    dateOnly?: string
     // amount of transaction (purchases are positive; refunds are negative)
     amount: number
+    // Exact decimal amount in Mintable's spending-positive convention, when supplied by a provider.
+    amountDecimal?: string
     // currency of transaction
     currency?: string
     // type of transaction (e.g. on-line or in-store)
@@ -26,6 +30,8 @@ export interface Transaction {
 
     // industry or merchant category (e.g. Entertainment)
     category?: string
+    counterparty?: string
+    counterpartyType?: string
 
     // street address where the transaction occurred
     address?: string

@@ -1,0 +1,16 @@
+{
+    "id": "account",
+    "enrollment_id": "enrollment",
+    "name": "Checking",
+    "type": "depository",
+    "subtype": "checking",
+    "currency": "USD",
+    "last_four": "1234",
+    "status": "open",
+    "institution": { "id": "test-bank", "name": "Test Bank" },
+    "links": {
+        "self": "https://api.teller.io/accounts/account",
+        "balances": "https://api.teller.io/accounts/account/balances",
+        "transactions": "https://api.teller.io/accounts/account/transactions"
+    }
+}
