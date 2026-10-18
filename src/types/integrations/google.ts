@@ -24,7 +24,9 @@ export interface GoogleConfig extends BaseIntegrationConfig {
     credentials: GoogleCredentials
     documentId: string
 
-    dateFormat?: string
+    dateFormat?: string // legacy month-tab format
+    monthTabFormat?: string
+    transactionDateFormat?: string
 
     template?: GoogleTemplateSheetSettings
 }
@@ -37,7 +39,7 @@ export const defaultGoogleConfig: GoogleConfig = {
     credentials: {
         clientId: '',
         clientSecret: '',
-        redirectUri: 'urn:ietf:wg:oauth:2.0:oob',
+        redirectUri: 'http://127.0.0.1',
         scope: ['https://www.googleapis.com/auth/spreadsheets']
     },
     documentId: ''

@@ -49,33 +49,58 @@ export default async () => {
 
     // End date to fetch transactions in YYYY-MM-DD format, default to current date
     let endDate = config.transactions.endDate ? parseISO(config.transactions.endDate) : new Date()
-    if (startDate > endDate) throw new Error('Fetch date range ends before the migration cutover month.')
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime()) || startDate > endDate) {
+        throw new Error('Fetch date range is invalid or ends before the migration cutover month.')
+    }
 
     let accounts: Account[] = []
     let teller: TellerIntegration | undefined
+
+    if (Object.keys(config.accounts).length === 0) throw new Error('No accounts are configured; output was kept.')
 
     for (const accountId in config.accounts) {
         const accountConfig = config.accounts[accountId]
 
         logInfo(`Fetching account ${accountConfig.id} using ${accountConfig.integration}.`)
 
+        let fetched: Account[]
         switch (accountConfig.integration) {
             case IntegrationId.CSVImport:
                 const csv = new CSVImportIntegration(config)
-                accounts = accounts.concat(await csv.fetchAccount(accountConfig, startDate, endDate))
+                fetched = [await csv.fetchAccount(accountConfig, startDate, endDate)]
                 break
 
             case IntegrationId.Teller:
                 teller = teller || new TellerIntegration(config)
-                accounts = accounts.concat(await teller.fetchAccount(accountConfig, startDate, endDate))
+                fetched = await teller.fetchAccount(accountConfig, startDate, endDate)
                 break
 
             default:
-                break
+                throw new Error(`Unsupported account provider: ${accountConfig.integration}.`)
         }
+        if (
+            !Array.isArray(fetched) ||
+            fetched.length === 0 ||
+            fetched.some(account => !account || !Array.isArray(account.transactions))
+        ) {
+            throw new Error(
+                `Account ${accountConfig.id} did not return a complete transaction dataset; output was kept.`
+            )
+        }
+        accounts.push(...fetched)
     }
 
-    accounts.flat(10)
+    for (const account of accounts) {
+        for (const transaction of account.transactions) {
+            if (
+                !(transaction.date instanceof Date) ||
+                isNaN(transaction.date.getTime()) ||
+                !Number.isFinite(transaction.amount)
+            ) {
+                throw new Error('An account returned an invalid transaction date or amount; output was kept.')
+            }
+        }
+    }
 
     const numTransactions = () =>
         accounts
@@ -93,10 +118,15 @@ export default async () => {
         logInfo(`${result.countOverridden} out of ${totalTransactions} total transactions overridden.`)
     }
 
+    const googleBalances = config.balances.integration === IntegrationId.Google
+    const googleTransactions = config.transactions.integration === IntegrationId.Google
+    if (googleBalances || googleTransactions) {
+        const google = new GoogleIntegration(config)
+        await google.updateAll(accounts, startDate, endDate, googleBalances, googleTransactions)
+    }
+
     switch (config.balances.integration) {
         case IntegrationId.Google:
-            const google = new GoogleIntegration(config)
-            await google.updateBalances(accounts)
             break
         case IntegrationId.CSVExport:
             const csv = new CSVExportIntegration(config)
@@ -108,8 +138,6 @@ export default async () => {
 
     switch (config.transactions.integration) {
         case IntegrationId.Google:
-            const google = new GoogleIntegration(config)
-            await google.updateTransactions(accounts)
             break
         case IntegrationId.CSVExport:
             const csv = new CSVExportIntegration(config)

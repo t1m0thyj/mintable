@@ -136,6 +136,12 @@ to enter the Google Sheets setup wizard. This will allow you to automatically up
 
 > **Note:** Google Sheets is the default export integration and this step is not necessary if you've already run `mintable setup`.
 
+Create a **Desktop app** OAuth client and enable the Sheets API in its Google Cloud project. `mintable google-setup` opens the system browser and receives the callback on `127.0.0.1`; it requests offline access and stores the refresh token in the configuration file. For unattended use, configure the consent screen for your actual audience and publish an External app to Production when ready. An External app left in Testing receives a seven-day refresh token for the Sheets scope. If the token expires or is revoked, run `mintable google-setup` again. See [Google's desktop OAuth guide](https://developers.google.com/identity/protocols/oauth2/native-app) and [refresh-token expiration rules](https://developers.google.com/identity/protocols/oauth2).
+
+Mintable owns the configured transaction and balance columns plus the `_mintable_key` column. Put formulas and annotations **to the right** of this key. Existing keyed transactions keep their row on later fetches, so these cells stay with the same transaction. Obsolete rows have only Mintable-owned cells cleared and retain a retired key; their user columns remain for review. A partial month's fetch merges new rows with stored keyed rows. Only a month fetched from its first through last day for every configured account retires missing rows; history from removed accounts stays in place. Teller months older than five months before the current month also merge because older provider history may be incomplete. An incomplete account fetch stops before any export. Existing unkeyed sheets require a new destination or a reviewed conversion before this writer will change them. A same-spreadsheet template must have the keyed column layout; cross-spreadsheet templates must be precreated in the destination.
+
+`monthTabFormat` controls tab names (default `yyyy.MM`); `transactionDateFormat` controls full transaction dates (default `yyyy-MM-dd`). The older `dateFormat` setting remains an alias for month tab names. Generated text is written as literal text and amounts as numbers. CSV exports also default to full dates and prefix text that spreadsheet software could interpret as formulas.
+
 ### On your local machine – via CSV files
 
 You can run:

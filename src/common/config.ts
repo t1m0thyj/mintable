@@ -8,6 +8,7 @@ import * as os from 'os'
 import Ajv from 'ajv'
 import { BalanceConfig } from '../types/balance'
 import { jsonc } from 'jsonc'
+import { writeFileAtomic } from './atomicFile'
 
 const DEFAULT_CONFIG_FILE = '~/mintable.jsonc'
 const DEFAULT_CONFIG_VAR = 'MINTABLE_CONFIG'
@@ -180,7 +181,7 @@ export const getConfig = (): Config => {
 export const writeConfig = (source: ConfigSource, config: Config): void => {
     if (source.type === 'file') {
         try {
-            fs.writeFileSync(source.path, jsonc.stringify(config, null, 2))
+            writeFileAtomic(source.path, jsonc.stringify(config, null, 2))
             logInfo('Successfully wrote configuration file.')
         } catch (e) {
             logError('Unable to write configuration file.', e)
