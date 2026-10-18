@@ -5,8 +5,6 @@ import { logInfo, logError } from './logging'
 import { argv } from 'yargs'
 import * as fs from 'fs'
 import * as os from 'os'
-import { resolve, join } from 'path'
-import { Definition, CompilerOptions, PartialArgs, getProgramFromFiles, generateSchema } from 'typescript-json-schema'
 import Ajv from 'ajv'
 import { BalanceConfig } from '../types/balance'
 import { jsonc } from 'jsonc'
@@ -110,34 +108,7 @@ export const parseConfig = (configString: string): Object => {
     }
 }
 
-export const getConfigSchema = (): Definition => {
-    const basePath = resolve(join(__dirname, '../..'))
-    const config = resolve(join(basePath, 'src/common/config.ts'))
-    const tsconfig = require(resolve(join(basePath, 'tsconfig.json')))
-    const types = resolve(join(basePath, 'node_modules/@types'))
-
-    // Generate JSON schema at runtime for Config interface above
-    const compilerOptions: CompilerOptions = {
-        ...tsconfig.compilerOptions,
-        typeRoots: [types],
-        baseUrl: basePath
-    }
-
-    const settings: PartialArgs = {
-        required: true,
-        defaultProps: true,
-        noExtraProps: true
-    }
-
-    try {
-        const program = getProgramFromFiles([config], compilerOptions, basePath)
-        const configSchema = generateSchema(program, 'Config', settings)
-
-        return configSchema
-    } catch (e) {
-        logError('Could not generate config schema.', e)
-    }
-}
+export const getConfigSchema = (): object => require('./config.schema.json')
 
 export const validateConfig = (parsedConfig: Object): Config => {
     const configSchema = getConfigSchema()

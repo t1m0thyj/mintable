@@ -1,7 +1,15 @@
 {
     "compilerOptions": {
-        "lib": ["es2019"],
+        "lib": ["es2022"],
+        "target": "es2022",
+        "module": "commonjs",
+        "moduleResolution": "node",
         "esModuleInterop": true,
+        "strict": true,
+        "strictNullChecks": false,
+        "noImplicitAny": false,
+        "strictPropertyInitialization": false,
         "outDir": "lib"
-    }
+    },
+    "include": ["src/**/*.ts"]
 }

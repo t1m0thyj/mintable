@@ -9,7 +9,7 @@
             <h2>Teller Account Setup</h2>
             <div id="accounts"><div id="accounts-table"></div></div>
 
-            <div id="add-accounts" style="display:none">
+            <div id="add-accounts" style="display: none">
                 <h3>Accounts Available to Add</h3>
                 <div id="add-accounts-table"></div>
             </div>
@@ -25,7 +25,7 @@
         <script src="https://cdn.teller.io/connect/connect.js"></script>
 
         <script type="text/javascript">
-            ;(function($) {
+            ;(function ($) {
                 let tellerConnect
                 let currentAccessToken
                 let params = new URLSearchParams(window.location.search)
@@ -52,7 +52,7 @@
                 })
 
                 // Handle the Add button.
-                $(document).on('click', 'button.add', function(e) {
+                $(document).on('click', 'button.add', function (e) {
                     const accountId = e.currentTarget.getAttribute('data-account-id')
                     e.currentTarget.classList.add('loading')
                     e.currentTarget.textContent = 'Adding...'
@@ -62,7 +62,7 @@
                 })
 
                 // Handle the Remove button.
-                $(document).on('click', 'button.remove', function(e) {
+                $(document).on('click', 'button.remove', function (e) {
                     const confirmed = confirm('Are you sure you want to remove this account? This cannot be undone.')
                     if (confirmed === true) {
                         const accountId = e.currentTarget.getAttribute('data-account-id')
@@ -73,12 +73,12 @@
                 })
 
                 // Handle the Link A New Account button.
-                $('#link-button').on('click', function(e) {
+                $('#link-button').on('click', function (e) {
                     tellerConnect.open()
                 })
 
                 // Handle the Done Linking Accounts button.
-                $('#done-button').on('click', function(e) {
+                $('#done-button').on('click', function (e) {
                     $.post('/done').then(data => {
                         $('#container').text('You can now close this page in your browser.')
                     })
@@ -109,16 +109,16 @@
                 // Initialize the client side connection with Teller for account linking.
                 tellerConnect = TellerConnect.setup({
                     applicationId: params.get('tellerAppId'),
-                    onInit: function() {
+                    onInit: function () {
                         console.log('Teller Connect has initialized')
                     },
-                    onSuccess: function(enrollment) {
+                    onSuccess: function (enrollment) {
                         // When the user authenticates with a bank and receives an
                         // access token, load the accounts associated with the token.
                         currentAccessToken = enrollment.accessToken
                         $.post('/get_enrollment_accounts', { enrollment }).then(onEnrollmentAccounts)
                     },
-                    onExit: function() {
+                    onExit: function () {
                         console.log('User closed Teller Connect')
                     }
                 })

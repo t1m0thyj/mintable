@@ -23,20 +23,24 @@ export class TellerIntegration {
 
     public tellerApi = (token: string, path: string, method = 'GET', body?: any): Promise<any> => {
         return new Promise((resolve, reject) => {
-            const req = https.request(`https://api.teller.io/${path}`, {
-                method,
-                auth: `${token}:`,
-                cert: readFileSync(this.tellerConfig.pathCertificate),
-                key: readFileSync(this.tellerConfig.pathPrivateKey),
-            }, (res) => {
-                const resData = []
-                res.on('data', (chunk) => resData.push(chunk))
-                res.on('end', () => {
-                    const resString = Buffer.concat(resData).toString()
-                    resolve(JSON.parse(resString))
-                })
-            })
-            req.on('error', (e) => {
+            const req = https.request(
+                `https://api.teller.io/${path}`,
+                {
+                    method,
+                    auth: `${token}:`,
+                    cert: readFileSync(this.tellerConfig.pathCertificate),
+                    key: readFileSync(this.tellerConfig.pathPrivateKey)
+                },
+                res => {
+                    const resData = []
+                    res.on('data', chunk => resData.push(chunk))
+                    res.on('end', () => {
+                        const resString = Buffer.concat(resData).toString()
+                        resolve(JSON.parse(resString))
+                    })
+                }
+            )
+            req.on('error', e => {
                 logError(`tellerApi encountered https request error: ${e.message}`, e)
                 reject(e)
             })
@@ -60,7 +64,7 @@ export class TellerIntegration {
     }
 
     public accountSetup = (): Promise<void> => {
-        return new Promise((resolve) => {
+        return new Promise(resolve => {
             const app = express()
                 .use(bodyParser.json())
                 .use(bodyParser.urlencoded({ extended: true }))
@@ -99,7 +103,9 @@ export class TellerIntegration {
                         const accountInfo = await this.tellerApi(accountConfig.token, `accounts/${accountConfig.id}`)
                         accounts.push({
                             id: accountConfig.id,
-                            name: accountInfo ? `${accountInfo.institution?.name} ${accountInfo.name} ${accountInfo.last_four}` : '-',
+                            name: accountInfo
+                                ? `${accountInfo.institution?.name} ${accountInfo.name} ${accountInfo.last_four}`
+                                : '-',
                             token: accountConfig.token
                         })
                     }
@@ -133,9 +139,7 @@ export class TellerIntegration {
                 res.sendFile(path.resolve(path.join(__dirname, '../../../src/integrations/teller/account-setup.html')))
             )
 
-            server = http
-                .createServer(app)
-                .listen('8000')
+            server = http.createServer(app).listen('8000')
         })
     }
 
@@ -147,24 +151,27 @@ export class TellerIntegration {
         return new Promise((resolve, reject) => {
             accountConfig = accountConfig as TellerAccountConfig
             try {
-                return this.tellerApi(accountConfig.token, `accounts/${accountConfig.id}/transactions`)
-                  .then((ttxs: TellerTransaction[]) => {
-                    if (!ttxs.reduce) {
-                        logError('Received unexpected data from Teller transactions API', ttxs)
-                        throw new Error('Received unexpected data from Teller transactions API')
-                    }
-                    const filteredTtxs: TellerTransaction[] = ttxs.reduce((results, ttx) => {
-                        const ttxDate = parseISO(ttx.date)
-                        if (compareAsc(ttxDate, startDate) !== -1 && compareAsc(ttxDate, endDate) !== 1) {
-                            results.push(ttx)
+                return this.tellerApi(accountConfig.token, `accounts/${accountConfig.id}/transactions`).then(
+                    (ttxs: TellerTransaction[]) => {
+                        if (!ttxs.reduce) {
+                            logError('Received unexpected data from Teller transactions API', ttxs)
+                            throw new Error('Received unexpected data from Teller transactions API')
                         }
-                        return results
-                    }, [])
-                    logInfo(`Received ${ttxs.length} transactions. Will import ${filteredTtxs.length} transactions within date range.`)
-                    return resolve(filteredTtxs)
-                  })
+                        const filteredTtxs: TellerTransaction[] = ttxs.reduce((results, ttx) => {
+                            const ttxDate = parseISO(ttx.date)
+                            if (compareAsc(ttxDate, startDate) !== -1 && compareAsc(ttxDate, endDate) !== 1) {
+                                results.push(ttx)
+                            }
+                            return results
+                        }, [])
+                        logInfo(
+                            `Received ${ttxs.length} transactions. Will import ${filteredTtxs.length} transactions within date range.`
+                        )
+                        return resolve(filteredTtxs)
+                    }
+                )
             } catch (e) {
-                logError(`fetchPagedTransactions encountered error: ${e.message}`, e)
+                logError(`fetchPagedTransactions encountered error: ${e instanceof Error ? e.message : String(e)}`, e)
                 return reject(e)
             }
         })
@@ -185,7 +192,10 @@ export class TellerIntegration {
         const accountInfo = await this.tellerApi(accountConfig.token, `accounts/${accountConfig.id}`)
 
         if (accountInfo.error) {
-            logWarn('Could not fetch data for account from Teller. Authentication may be expired. Run: `mintable teller-account-setup`', {})
+            logWarn(
+                'Could not fetch data for account from Teller. Authentication may be expired. Run: `mintable teller-account-setup`',
+                {}
+            )
             throw new Error('Could not fetch data for account from Teller.')
         }
 
@@ -208,7 +218,10 @@ export class TellerIntegration {
         const data = await this.fetchPagedTransactions(accountConfig, startDate, endDate)
 
         if (!data || !data.map) {
-            logWarn(`fetchAccount received unexpected response for transactions from ${account.institution} ${account.account}`, data)
+            logWarn(
+                `fetchAccount received unexpected response for transactions from ${account.institution} ${account.account}`,
+                data
+            )
             return []
         }
 
@@ -233,10 +246,7 @@ export class TellerIntegration {
 
         account.transactions = transactions
 
-        logInfo(
-            `Fetched account with ${transactions.length} transactions.`,
-            account
-        )
+        logInfo(`Fetched account with ${transactions.length} transactions.`, account)
         return [account]
     }
 }

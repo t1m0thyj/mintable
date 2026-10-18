@@ -9,7 +9,8 @@ mintable.sandbox.json
 mintable.jsonc
 
 node_modules/
-package-lock.json
+.npm-cache/
+.packcheck/
 yarn-error.log
 yarn.lock
 .next

@@ -4,8 +4,8 @@ export interface TellerConfig extends BaseIntegrationConfig {
     id: IntegrationId.Teller
     type: IntegrationType.Import
 
-    pathCertificate: string,
-    pathPrivateKey: string,
+    pathCertificate: string
+    pathPrivateKey: string
     appId: string
 }
 
@@ -20,25 +20,25 @@ export const defaultTellerConfig: TellerConfig = {
 }
 
 export interface TellerTransaction {
-    account_id: string,
-    amount: string,
-    date: string,
-    description: string,
-    details: TellerTransactionDetails,
-    status: string,
-    id: string,
-    links: TellerTransactionLinks,
-    running_balance?: string,
+    account_id: string
+    amount: string
+    date: string
+    description: string
+    details: TellerTransactionDetails
+    status: string
+    id: string
+    links: TellerTransactionLinks
+    running_balance?: string
     type: string
 }
 
 export interface TellerTransactionDetails {
-    category?: string,
-    counterparty?: string,
+    category?: string
+    counterparty?: string
     processing_status: string
 }
 
 export interface TellerTransactionLinks {
-    account: string,
+    account: string
     self: string
 }

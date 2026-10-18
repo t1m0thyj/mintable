@@ -1,0 +1,6 @@
+[
+    { "id": "before", "account_id": "checking", "date": "2026-02-28", "amount": "-4.00", "description": "Before", "type": "card_payment", "status": "posted" },
+    { "id": "first", "account_id": "checking", "date": "2026-03-01", "amount": "-12.34", "description": "Purchase", "type": "card_payment", "status": "posted" },
+    { "id": "last", "account_id": "checking", "date": "2026-03-31", "amount": "25.00", "description": "Deposit", "type": "deposit", "status": "posted" },
+    { "id": "after", "account_id": "checking", "date": "2026-04-01", "amount": "-3.00", "description": "After", "type": "card_payment", "status": "posted" }
+]

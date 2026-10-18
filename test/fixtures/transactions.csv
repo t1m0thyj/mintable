@@ -1,0 +1,5 @@
+Date,Amount,Description
+02/28/2026,$4.00,Before
+03/01/2026,"-$12.34",Purchase
+03/31/2026,$25.00,Deposit
+04/01/2026,$3.00,After

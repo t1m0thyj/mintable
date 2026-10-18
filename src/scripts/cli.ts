@@ -13,7 +13,7 @@ import tellerAccountSetup from '../integrations/teller/accountSetup'
 import fetch from './fetch'
 import migrate from './migrate'
 import { logError } from '../common/logging'
-;(async function() {
+;(async function () {
     const logo = [
         '\n',
         '          %',

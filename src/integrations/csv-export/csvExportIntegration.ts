@@ -5,7 +5,7 @@ import { Account } from '../../types/account'
 import { Transaction } from '../../types/transaction'
 import { CSVExportConfig } from '../../types/integrations/csv-export'
 import { writeFileSync } from 'fs'
-import stringify from 'csv-stringify/lib/sync'
+import { stringify } from 'csv-stringify/sync'
 import { format } from 'date-fns'
 
 export class CSVExportIntegration {

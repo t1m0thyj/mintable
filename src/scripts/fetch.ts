@@ -8,7 +8,7 @@ import { IntegrationId } from '../types/integrations'
 import { parseISO, subMonths, startOfMonth } from 'date-fns'
 import { CSVImportIntegration } from '../integrations/csv-import/csvImportIntegration'
 import { CSVExportIntegration } from '../integrations/csv-export/csvExportIntegration'
-import { Transaction, TransactionRuleCondition, TransactionRule } from '../types/transaction'
+import { applyTransactionRules } from '../common/transactionRules'
 
 export default async () => {
     const config = getConfig()
@@ -58,42 +58,13 @@ export default async () => {
 
     const totalTransactions = numTransactions()
 
-    const transactionMatchesRule = (transaction: Transaction, rule: TransactionRule): boolean => {
-        return rule.conditions
-            .map(condition => new RegExp(condition.pattern, condition.flags).test(transaction[condition.property]))
-            .every(condition => condition === true)
-    }
-
     // Transaction Rules
     if (config.transactions.rules) {
-        let countOverridden = 0
-
-        accounts = accounts.map(account => ({
-            ...account,
-            transactions: account.transactions
-                .map(transaction => {
-                    config.transactions.rules.forEach(rule => {
-                        if (transaction && transactionMatchesRule(transaction, rule)) {
-                            if (rule.type === 'filter') {
-                                transaction = undefined
-                            }
-                            if (rule.type === 'override' && transaction.hasOwnProperty(rule.property)) {
-                                transaction[rule.property] = (transaction[rule.property].toString() as String).replace(
-                                    new RegExp(rule.findPattern, rule.flags),
-                                    rule.replacePattern
-                                )
-                                countOverridden += 1
-                            }
-                        }
-                    })
-
-                    return transaction
-                })
-                .filter(transaction => transaction !== undefined)
-        }))
+        const result = applyTransactionRules(accounts, config.transactions.rules)
+        accounts = result.accounts
 
         logInfo(`${numTransactions()} transactions out of ${totalTransactions} total transactions matched filters.`)
-        logInfo(`${countOverridden} out of ${totalTransactions} total transactions overridden.`)
+        logInfo(`${result.countOverridden} out of ${totalTransactions} total transactions overridden.`)
     }
 
     switch (config.balances.integration) {

@@ -168,9 +168,7 @@ export class PlaidIntegration {
                 res.sendFile(path.resolve(path.join(__dirname, '../../../src/integrations/plaid/account-setup.html')))
             )
 
-            server = require('http')
-                .createServer(app)
-                .listen('8000')
+            server = require('http').createServer(app).listen('8000')
         })
     }
 

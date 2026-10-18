@@ -4,9 +4,9 @@ import { logInfo, logError, logWarn } from '../../common/logging'
 import { AccountConfig, Account, CSVAccountConfig } from '../../types/account'
 import { Transaction } from '../../types/transaction'
 import { CSVImportConfig } from '../../types/integrations/csv-import'
-import glob from 'glob'
+import { globSync } from 'glob'
 import { readFileSync } from 'fs'
-import parse from 'csv-parse/lib/sync'
+import { parse } from 'csv-parse/sync'
 import * as dateFns from 'date-fns'
 
 export class CSVImportIntegration {
@@ -32,7 +32,7 @@ export class CSVImportIntegration {
             account.transactions = CSVAccountConfig.paths
                 .map(path => {
                     try {
-                        const files = glob.sync(path)
+                        const files = globSync(path)
 
                         if (files.length === 0) {
                             logError(`No files resolved for path glob ${path}.`)
@@ -64,7 +64,9 @@ export class CSVImportIntegration {
                                     // Remove spaces/special characters from amount field
                                     if (outputRow.hasOwnProperty('amount')) {
                                         const pattern = new RegExp(`[^0-9\.\-]*`, 'gi')
-                                        outputRow['amount'] = parseFloat(outputRow['amount'].toString().replace(pattern, ''))
+                                        outputRow['amount'] = parseFloat(
+                                            outputRow['amount'].toString().replace(pattern, '')
+                                        )
                                     }
 
                                     // Parse dates

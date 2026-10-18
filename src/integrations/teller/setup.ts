@@ -10,7 +10,7 @@ export default async () => {
     try {
         console.log('\nThis script will walk you through setting up the Teller integration. Follow these steps:')
         console.log('\n\t1. Visit https://teller.io')
-        console.log('\t2. Click \'Get Started\'')
+        console.log("\t2. Click 'Get Started'")
         console.log('\t3. Fill out the form')
         console.log('\t4. Find the application ID, and download the certificate and private key')
         console.log('\t5. Answer the following questions:\n')
@@ -28,19 +28,20 @@ export default async () => {
                 type: 'text',
                 name: 'pathCertificate',
                 message: 'Path to Certificate',
-                validate: (s: string) => s.length && existsSync(s) ? true : 'Must enter path to certificate file.'
+                validate: (s: string) => (s.length && existsSync(s) ? true : 'Must enter path to certificate file.')
             },
             {
                 type: 'text',
                 name: 'pathPrivateKey',
                 message: 'Path to Private Key',
-                validate: (s: string) => s.length && existsSync(s) ? true : 'Must enter path to private key file.'
+                validate: (s: string) => (s.length && existsSync(s) ? true : 'Must enter path to private key file.')
             },
             {
                 type: 'text',
                 name: 'appId',
                 message: 'Application ID',
-                validate: (s: string) => s.length && s.startsWith('app_') ? true : 'Must enter Application ID from Teller.'
+                validate: (s: string) =>
+                    s.length && s.startsWith('app_') ? true : 'Must enter Application ID from Teller.'
             }
         ])
 
