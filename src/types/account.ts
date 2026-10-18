@@ -30,6 +30,7 @@ export interface Account {
 export interface BaseAccountConfig {
     id: string
     integration: IntegrationId
+    localAccountId?: string
 }
 
 export interface CSVAccountConfig extends BaseAccountConfig {

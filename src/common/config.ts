@@ -46,6 +46,32 @@ export interface Config {
     enrollments: { [id: string]: TellerEnrollmentConfig }
     transactions: TransactionConfig
     balances: BalanceConfig
+    migration?: MigrationState
+}
+
+export interface MigrationAccount {
+    sourceKey: string
+    label: string
+}
+
+export interface MigrationMapping {
+    localAccountId: string
+    target: string
+}
+
+export interface MigrationState {
+    status: 'pending' | 'active'
+    sourceVersion: 'v1' | 'v2'
+    sourceSha256: string
+    sourceBackupPath: string
+    outputBackupPaths?: string[]
+    legacyAccounts: MigrationAccount[]
+    originalGoogleDocumentId?: string
+    originalTransactionPath?: string
+    originalBalancePath?: string
+    accountMappings?: { [sourceKey: string]: MigrationMapping }
+    archiveGoogleDocumentId?: string
+    cutoverMonth?: string
 }
 
 export interface TellerEnrollmentConfig {

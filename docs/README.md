@@ -24,7 +24,7 @@ The account linking page opens in your browser after its local server starts. It
 - `mintable google-setup`: select Google Sheets output.
 - `mintable fetch`: fetch accounts and update the selected output.
 
-Plaid is no longer a live provider. Existing Plaid credentials cannot be reused as Teller credentials. The v3 migration flow for old configurations is still in progress; keep old configs and exports until that work is complete.
+Plaid is no longer a live provider. Existing Plaid credentials cannot be reused as Teller credentials. See [Migrating existing data](#migrating-existing-data) before using an old configuration with v3.
 
 ## Configuration example
 
@@ -42,6 +42,52 @@ A fresh CSV-only setup can produce a configuration shaped like this (the wizard 
 ```
 
 A Teller account references an `enrollmentId` in `enrollments`. The enrollment holds the access token once. Treat your configuration and backups as private credentials.
+
+## Migrating existing data
+
+`mintable migrate` accepts v1, v2 Plaid, v2 Teller fork, and mixed configurations. It never uses Plaid's SDK or relabels Plaid tokens. The first command only previews the conversion. It shows a review hash without printing credential values:
+
+```bash
+mintable migrate --source-file /path/to/old/mintable.jsonc --output-config-file /path/to/new/mintable.v3.jsonc
+```
+
+Review the retained integrations, accounts, columns, rules, backup paths, and warnings. Then apply the exact preview:
+
+```bash
+mintable migrate --source-file /path/to/old/mintable.jsonc --output-config-file /path/to/new/mintable.v3.jsonc --apply --expect-sha256 REVIEW_HASH
+```
+
+For a configuration in an environment variable, use `--source-env MINTABLE_CONFIG --output-config-file /path/to/new/mintable.v3.jsonc`. The output file is required; Mintable does not change the parent environment. Apply writes a separate v3 file atomically and makes private source and existing CSV output backups. Running the same apply again is safe when the preview is unchanged. Keep the old program and configuration until you have verified the new output. Backups may contain live bank and Google credentials, so keep them private.
+
+The new v3 file begins in `pending` state. `mintable fetch` will refuse to export from it. Configure Teller with `mintable teller-setup --config-file=/path/to/new/mintable.v3.jsonc`, then link accounts with `mintable account-setup --config-file=/path/to/new/mintable.v3.jsonc`. CSV import accounts, export settings, transaction rules, templates, and custom columns are carried forward. Plaid accounts need Teller reconnection. A Teller fork account with no recoverable enrollment ID is listed for reconnection. An unsupported bank account can remain in the old archive or be represented through CSV.
+
+Create an account mapping JSON file. Give each old bank or CSV account a stable local identity and a new target, or mark it `archive` if it will not be imported. This makes keeping a legacy CSV source alongside Teller an explicit choice:
+
+```json
+{
+  "plaid:old-account-id": { "localAccountId": "checking", "target": "teller:acc_new_id" },
+  "plaid:unsupported-id": { "localAccountId": "legacy-only", "target": "archive" },
+  "csv:Manual": { "localAccountId": "manual", "target": "csv:Manual" }
+}
+```
+
+Choose a **new destination** for Teller output. If the old output is Google Sheets, manually duplicate the original spreadsheet as an archive, create a separate empty destination spreadsheet, and review formulas and account/category references. The existing Google authorization only requested a Sheets scope; copying a whole file through Drive requires a Drive scope, so Mintable asks for the archive copy's ID instead of attempting an incomplete copy. [Google Drive's file-copy scope requirements](https://developers.google.com/workspace/drive/api/reference/rest/v3/files/copy). Mintable checks that the three IDs differ, but you must verify that the archive is a complete copy and that the new destination is empty.
+
+Preview activation with all mappings and destinations:
+
+```bash
+mintable migrate --activate --config-file /path/to/new/mintable.v3.jsonc --account-map-file /path/to/account-map.json --cutover-month 2026-11 --new-google-sheet-id NEW_ID --google-archive-id ARCHIVE_ID --reviewed-formulas --empty-google-destination
+```
+
+For CSV output, replace the Google options with `--new-transactions-csv /absolute/new-transactions.csv --new-balances-csv /absolute/new-balances.csv`. Both paths must be new and distinct. To apply activation, repeat the preview command with `--apply --expect-sha256 CONFIG_HASH` from its output. Activation backs up the pending v3 config before changing it. The original Google sheet, CSV outputs, legacy config, and backups remain unchanged. Use the new v3 config with `--config-file` only after inspecting the new destination. To roll back, use your old Mintable version and unchanged legacy config and output.
+
+For a **continuous CSV history**, export both histories with full dates, `accountId`, and `transactionId` columns. The old defaults often omitted IDs; Mintable will block automatic reconciliation if they are absent. Set a complete-month boundary after the final month represented in the old output. Record your review of every active account in a separate JSON file:
+
+```json
+{ "cutoverMonth": "2026-11", "localAccountIds": ["checking"] }
+```
+
+Run `mintable reconcile` with `--old-csv OLD.csv --new-csv NEW.csv --account-map-file account-map.json --complete-month-file complete.json --output-csv merged.csv --cutover-month 2026-11`. The preview reports ignored new rows before cutover, possible cross-provider matches, and blockers. Apply using `--apply --expect-sha256 REVIEW_HASH`. The output is a new CSV with stable `mintableLocalAccountId` and provider-qualified `mintableSourceKey` columns. Mintable never treats matching date, amount, and description as proof of identity, never merges an overlapping month automatically, and never overwrites either input. Import the reviewed result into a separate destination; do not point the old monthly writer at it. Google history requires a separately reviewed export/import because formulas and annotations may depend on row positions.
 
 ## Importing account balances and transactions
 

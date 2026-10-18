@@ -8,13 +8,15 @@ import teller from '../integrations/teller/setup'
 import tellerAccountSetup from '../integrations/teller/accountSetup'
 import fetch from './fetch'
 import migrate from './migrate'
+import reconcile from './reconcile'
 
 const commands: { [name: string]: () => Promise<unknown> | unknown } = {
     migrate,
+    reconcile,
     fetch,
     'plaid-setup': () => {
         throw new Error(
-            'Plaid setup has been removed. Use `mintable setup` for a fresh v3 config; keep old configs for the upcoming migration flow.'
+            'Plaid setup has been removed. Use `mintable migrate --source-file PATH` to preview conversion, or `mintable setup` for a fresh v3 config.'
         )
     },
     'account-setup': tellerAccountSetup,
@@ -74,7 +76,7 @@ async function main(): Promise<void> {
     console.log(`Mintable v${require('../../package.json').version}`)
     console.log('usage: mintable <command>')
     console.log(
-        'commands: setup, fetch, account-setup, teller-setup, csv-import-setup, csv-export-setup, google-setup, migrate'
+        'commands: setup, fetch, account-setup, teller-setup, csv-import-setup, csv-export-setup, google-setup, migrate, reconcile'
     )
     console.log('account-setup uses Teller; add --port=PORT to choose the local setup port.')
 }

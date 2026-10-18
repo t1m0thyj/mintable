@@ -11,14 +11,45 @@ import { applyTransactionRules } from '../common/transactionRules'
 
 export default async () => {
     const config = getConfig()
+    if (config.migration?.status === 'pending') {
+        throw new Error('Migrated configuration is pending activation. Run `mintable migrate --activate` first.')
+    }
+    if (config.migration?.status === 'active') {
+        const state = config.migration
+        const google = config.integrations[IntegrationId.Google] as { documentId?: string } | undefined
+        const csv = config.integrations[IntegrationId.CSVExport] as
+            | {
+                  transactionPath?: string
+                  balancePath?: string
+              }
+            | undefined
+        if (
+            (google &&
+                (config.transactions.integration === IntegrationId.Google ||
+                    config.balances.integration === IntegrationId.Google) &&
+                [state.originalGoogleDocumentId, state.archiveGoogleDocumentId].includes(google.documentId)) ||
+            (csv &&
+                ((config.transactions.integration === IntegrationId.CSVExport &&
+                    csv.transactionPath === state.originalTransactionPath) ||
+                    (config.balances.integration === IntegrationId.CSVExport &&
+                        csv.balancePath === state.originalBalancePath)))
+        ) {
+            throw new Error('Migrated output points to an original or archive destination; fetch was stopped.')
+        }
+    }
 
     // Start date to fetch transactions, default to 2 months of history
     let startDate = config.transactions.startDate
         ? parseISO(config.transactions.startDate)
         : startOfMonth(subMonths(new Date(), 2))
+    if (config.migration?.status === 'active' && config.migration.cutoverMonth) {
+        const cutover = parseISO(`${config.migration.cutoverMonth}-01`)
+        if (startDate < cutover) startDate = cutover
+    }
 
     // End date to fetch transactions in YYYY-MM-DD format, default to current date
     let endDate = config.transactions.endDate ? parseISO(config.transactions.endDate) : new Date()
+    if (startDate > endDate) throw new Error('Fetch date range ends before the migration cutover month.')
 
     let accounts: Account[] = []
     let teller: TellerIntegration | undefined

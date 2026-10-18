@@ -41,6 +41,8 @@ Requires Node 24 or newer.
 
 Teller development and production use real bank data; sandbox uses test data. The wizard lets you choose Google Sheets or CSV output. See the [setup guide](./docs/README.md) for linking, repair, and CSV options.
 
+If you already have Mintable data, preview the [v3 migration](./docs/README.md#migrating-existing-data) before connecting Teller. The migration preserves your original config and outputs for rollback.
+
 ## Documentation
 
 Check out the full documentation [in the `./docs` folder](./docs/README.md).
