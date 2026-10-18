@@ -1,12 +1,8 @@
-import path from 'path'
 import { format, subDays, subMonths } from 'date-fns'
-import { Config, updateConfig } from '../../common/config'
+import { Config } from '../../common/config'
 import { TellerConfig, TellerTransaction } from '../../types/integrations/teller'
 import { IntegrationId } from '../../types/integrations'
-import express from 'express'
-import bodyParser from 'body-parser'
 import { logInfo, logWarn } from '../../common/logging'
-import http from 'http'
 import { AccountConfig, Account, TellerAccountConfig } from '../../types/account'
 import { TellerClient, TellerError } from './tellerClient'
 import {
@@ -34,101 +30,10 @@ export class TellerIntegration {
     public tellerApi = (token: string, route: string, method: 'GET' | 'POST' | 'DELETE' = 'GET', body?: string) =>
         this.client.requestJson(token, route, method, body)
 
-    public registerAccount = (accessToken: string, accountId: string): void => {
-        updateConfig(config => {
-            config.accounts[accountId] = {
-                id: accountId,
-                integration: IntegrationId.Teller,
-                token: accessToken
-            }
-            this.config = config
-            return config
-        })
-    }
-
-    public accountSetup = (): Promise<void> => {
-        return new Promise((resolve, reject) => {
-            const app = express()
-                .use(bodyParser.json())
-                .use(bodyParser.urlencoded({ extended: true }))
-                .use(express.static(path.resolve(path.join(__dirname, '../../../docs'))))
-
-            let server: http.Server
-
-            app.post('/get_enrollment_accounts', async (req, res) => {
-                const token = req.body?.enrollment?.accessToken
-                if (typeof token !== 'string' || !token) return res.status(400).json({ error: 'Invalid enrollment.' })
-                try {
-                    const accounts = await this.tellerApi(token, 'accounts')
-                    return res.json(accounts)
-                } catch {
-                    return res.status(502).json({ error: 'Unable to load Teller accounts.' })
-                }
-            })
-
-            app.post('/register_account', (req, res) => {
-                if (typeof req.body?.accessToken !== 'string' || typeof req.body?.accountId !== 'string') {
-                    return res.status(400).json({ error: 'Invalid account selection.' })
-                }
-                try {
-                    this.registerAccount(req.body.accessToken, req.body.accountId)
-                    logInfo('Teller account saved.')
-                    return res.json({})
-                } catch {
-                    return res.status(500).json({ error: 'Unable to save Teller account.' })
-                }
-            })
-
-            app.post('/accounts', async (_req, res) => {
-                const accounts: { id: string; name: string }[] = []
-                try {
-                    for (const accountId in this.config.accounts) {
-                        const accountConfig = this.config.accounts[accountId] as TellerAccountConfig
-                        if (accountConfig.integration !== IntegrationId.Teller) continue
-                        const raw = await this.tellerApi(
-                            accountConfig.token,
-                            `accounts/${encodeURIComponent(accountConfig.id)}`
-                        )
-                        const info = parseTellerAccount(raw, accountConfig.id)
-                        accounts.push({
-                            id: info.id,
-                            name: [info.institution?.name, info.name, info.last_four].filter(Boolean).join(' ')
-                        })
-                    }
-                    return res.json(accounts)
-                } catch {
-                    return res.status(502).json({ error: 'Unable to load saved Teller accounts.' })
-                }
-            })
-
-            app.post('/remove', (req, res) => {
-                try {
-                    updateConfig(config => {
-                        if (config.accounts[req.body.accountId]) delete config.accounts[req.body.accountId]
-                        this.config = config
-                        return config
-                    })
-                    logInfo('Successfully removed Teller account.')
-                    return res.json({})
-                } catch {
-                    return res.status(500).json({ error: 'Unable to remove Teller account.' })
-                }
-            })
-
-            app.post('/done', (_req, res) => {
-                res.json({})
-                server.close()
-                resolve()
-            })
-
-            app.get('/', (_req, res) =>
-                res.sendFile(path.resolve(path.join(__dirname, '../../../src/integrations/teller/account-setup.html')))
-            )
-
-            server = http.createServer(app)
-            server.on('error', reject)
-            server.listen(8000, '127.0.0.1')
-        })
+    private tokenFor(account: TellerAccountConfig): string {
+        const token = this.config.enrollments?.[account.enrollmentId]?.token
+        if (!token) throw new TellerError('configuration', 'Teller enrollment token is missing for this account.')
+        return token
     }
 
     public fetchPagedTransactions = async (
@@ -151,7 +56,7 @@ export class TellerIntegration {
             const query = new URLSearchParams({ start_date: start, end_date: end, count: String(PAGE_SIZE) })
             if (cursor) query.set('from_id', cursor)
             const page = parseTellerTransactions(
-                await this.tellerApi(tellerAccount.token, `${base}?${query}`),
+                await this.tellerApi(this.tokenFor(tellerAccount), `${base}?${query}`),
                 tellerAccount.id
             )
             if (page.length > PAGE_SIZE) {
@@ -180,12 +85,15 @@ export class TellerIntegration {
             logWarn('Transaction history older than 6 months may not be available for some institutions.')
         }
         const base = `accounts/${encodeURIComponent(tellerAccount.id)}`
-        const details = parseTellerAccount(await this.tellerApi(tellerAccount.token, base), tellerAccount.id)
+        const details = parseTellerAccount(await this.tellerApi(this.tokenFor(tellerAccount), base), tellerAccount.id)
         if (!details.links.transactions) {
             throw new TellerError('unsupported_resource', 'Teller transactions are unavailable for this account.')
         }
         const balances = details.links.balances
-            ? parseTellerBalances(await this.tellerApi(tellerAccount.token, `${base}/balances`), tellerAccount.id)
+            ? parseTellerBalances(
+                  await this.tellerApi(this.tokenFor(tellerAccount), `${base}/balances`),
+                  tellerAccount.id
+              )
             : undefined
         const account = normalizeTellerAccount(details, balances)
         const transactions = await this.fetchPagedTransactions(accountConfig, startDate, endDate)

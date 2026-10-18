@@ -1,67 +1,80 @@
 import { existsSync, realpathSync } from 'fs'
 import prompts from 'prompts'
-
 import { TellerConfig, defaultTellerConfig } from '../../types/integrations/teller'
-import { updateConfig } from '../../common/config'
+import { updateConfig, getConfig } from '../../common/config'
 import { IntegrationId } from '../../types/integrations'
-import { logInfo, logError } from '../../common/logging'
+import { logInfo } from '../../common/logging'
 
 export default async () => {
-    try {
-        console.log('\nThis script will walk you through setting up the Teller integration. Follow these steps:')
-        console.log('\n\t1. Visit https://teller.io')
-        console.log("\t2. Click 'Get Started'")
-        console.log('\t3. Fill out the form')
-        console.log('\t4. Find the application ID, and download the certificate and private key')
-        console.log('\t5. Answer the following questions:\n')
-
-        const credentials = await prompts([
-            {
-                type: 'text',
-                name: 'name',
-                message: 'What would you like to call this integration?',
-                initial: 'Teller',
-                validate: (s: string) =>
-                    1 < s.length && s.length <= 64 ? true : 'Must be between 2 and 64 characters in length.'
-            },
-            {
-                type: 'text',
-                name: 'pathCertificate',
-                message: 'Path to Certificate',
-                validate: (s: string) => (s.length && existsSync(s) ? true : 'Must enter path to certificate file.')
-            },
-            {
-                type: 'text',
-                name: 'pathPrivateKey',
-                message: 'Path to Private Key',
-                validate: (s: string) => (s.length && existsSync(s) ? true : 'Must enter path to private key file.')
-            },
-            {
-                type: 'text',
-                name: 'appId',
-                message: 'Application ID',
-                validate: (s: string) =>
-                    s.length && s.startsWith('app_') ? true : 'Must enter Application ID from Teller.'
-            }
-        ])
-
-        updateConfig(config => {
-            const tellerConfig = (config.integrations[IntegrationId.Teller] as TellerConfig) || defaultTellerConfig
-
-            tellerConfig.name = credentials.name
-            tellerConfig.pathCertificate = realpathSync(credentials.pathCertificate)
-            tellerConfig.pathPrivateKey = realpathSync(credentials.pathPrivateKey)
-            tellerConfig.appId = credentials.appId
-
-            config.integrations[IntegrationId.Teller] = tellerConfig
-
-            return config
-        })
-
-        logInfo('Successfully set up Teller Integration.')
-        return true
-    } catch (e) {
-        logError('Unable to set up Teller Integration.', e)
-        return false
+    const previous = getConfig().integrations[IntegrationId.Teller] as TellerConfig | undefined
+    console.log(
+        '\nConfigure your Teller application. Development and production connect to real banks. Sandbox uses test data.\n'
+    )
+    const environmentResponse = await prompts({
+        type: 'select',
+        name: 'environment',
+        message: 'Teller environment',
+        initial: ['development', 'sandbox', 'production'].indexOf(previous?.environment || 'development'),
+        choices: [
+            { title: 'Development (real bank data)', value: 'development' },
+            { title: 'Sandbox (test data)', value: 'sandbox' },
+            { title: 'Production (real bank data)', value: 'production' }
+        ]
+    })
+    if (!environmentResponse.environment) throw new Error('Teller setup cancelled.')
+    const credentials = await prompts([
+        {
+            type: 'text',
+            name: 'name',
+            message: 'Integration name',
+            initial: previous?.name || 'Teller',
+            validate: (s: string) => (s.length >= 2 && s.length <= 64) || 'Use 2–64 characters.'
+        },
+        {
+            type: 'text',
+            name: 'appId',
+            message: 'Teller application ID',
+            initial: previous?.appId || '',
+            validate: (s: string) => /^app_[A-Za-z0-9_-]+$/.test(s) || 'Enter your Teller application ID.'
+        },
+        {
+            type: 'text',
+            name: 'pathCertificate',
+            message: 'Certificate file path (blank in sandbox)',
+            initial: previous?.pathCertificate || '',
+            validate: (s: string) =>
+                (s && existsSync(s)) ||
+                (!s && environmentResponse.environment === 'sandbox') ||
+                'Enter an existing certificate file.'
+        },
+        {
+            type: 'text',
+            name: 'pathPrivateKey',
+            message: 'Private key file path (blank in sandbox)',
+            initial: previous?.pathPrivateKey || '',
+            validate: (s: string) =>
+                (s && existsSync(s)) ||
+                (!s && environmentResponse.environment === 'sandbox') ||
+                'Enter an existing private key file.'
+        }
+    ])
+    if (
+        !credentials.name ||
+        !credentials.appId ||
+        (environmentResponse.environment !== 'sandbox' && (!credentials.pathCertificate || !credentials.pathPrivateKey))
+    ) {
+        throw new Error('Teller setup cancelled.')
     }
+    updateConfig(config => {
+        config.integrations[IntegrationId.Teller] = {
+            ...defaultTellerConfig,
+            name: credentials.name,
+            appId: credentials.appId,
+            environment: environmentResponse.environment,
+            pathCertificate: credentials.pathCertificate ? realpathSync(credentials.pathCertificate) : '',
+            pathPrivateKey: credentials.pathPrivateKey ? realpathSync(credentials.pathPrivateKey) : ''
+        }
+        return config
+    })
+    logInfo('Teller integration configured.')
 }

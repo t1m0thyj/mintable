@@ -27,23 +27,19 @@ Mintable helps you:
 
 ## Quickstart
 
-Requires `node >= v11.0.0`.
+Requires Node 24 or newer.
 
-1. Sign up for [Plaid's Free Plan](https://plaid.com/pricing/).
-2. Install Mintable:
+1. Create a Teller application if you want to connect banks, or prepare CSV files for CSV-only use.
+2. Install Mintable and run the wizard:
 
     ```bash
     npm install -g mintable
     mintable setup
     ```
 
-3. Update your account balances/transactions:
+3. Update balances and transactions with `mintable fetch`.
 
-    ```
-    mintable fetch
-    ```
-
-> **Note:** If you're already a version `1.x.x` user, you can [migrate your existing configuration to version `2.x.x`](./docs/README.md#migrating-from-v1xx).
+Teller development and production use real bank data; sandbox uses test data. The wizard lets you choose Google Sheets or CSV output. See the [setup guide](./docs/README.md) for linking, repair, and CSV options.
 
 ## Documentation
 
@@ -56,9 +52,9 @@ Check out the full documentation [in the `./docs` folder](./docs/README.md).
 > **min·ta·ble**: _noun._
 > 1. An open-source tool to automate your personal finances – for free, with no ads, and no data collection. Derived from *mint* (the [wildly popular personal finance app from Intuit](https://www.mint.com/)) + *table* (a spreadsheet).
 
-**Do I have to use Plaid?**
+**Do I have to connect a bank?**
 
-* Nope. You can [import transactions from a CSV bank statement](./docs/README.md#manually--on-your-local-machine--via-csv-bank-statements) exclusively on your local machine. We also have [templates](./docs/templates) to get you started.
+* No. Choose CSV-only import in `mintable setup`.
 
 **Do I have to use Google Sheets?**
 
@@ -68,13 +64,9 @@ Check out the full documentation [in the `./docs` folder](./docs/README.md).
 
 * Nope. You can automate it for free using [BitBar](./docs/README.md#automatically-in-your-macs-menu-bar--via-bitbar), [`cron`](./docs/README.md#automatically-in-your-local-machines-terminal--via-cron), or [GitHub Actions](./docs/README.md#automatically-in-the-cloud--via-github-actions).
 
-**How do I use it with banks outside the US?**
+**How do I use it on Windows?**
 
-* Fork & edit the [country codes here](https://github.com/kevinschaich/mintable/blob/377257a6040ed9b6dd93d88435e53c48108b5806/src/integrations/plaid/plaidIntegration.ts#L126). Default support is for US banks.
-
-**How do I use it with Windows?**
-
-* Windows is not natively supported but you can try [this](https://github.com/kevinschaich/mintable/issues/125#issuecomment-1253961155).
+* Use Node 24 or newer. The setup wizard accepts absolute Windows paths for CSV files.
 
 **It's not working!**
 

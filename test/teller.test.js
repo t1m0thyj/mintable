@@ -66,7 +66,11 @@ const transaction = (id, date = '2026-03-01', amount = '-12.34') => ({
     status: 'posted'
 })
 
-const integration = requestJson => new TellerIntegration({ integrations: { teller: config } }, { requestJson })
+const integration = requestJson =>
+    new TellerIntegration(
+        { integrations: { teller: config }, enrollments: { enr_fixture: { id: 'enr_fixture', token: 'fixture' } } },
+        { requestJson }
+    )
 
 test('client pins origin and API version and accepts empty 204 responses', async () => {
     const captured = []
@@ -168,7 +172,7 @@ test('transaction pagination follows from_id, deduplicates IDs, and bounds dates
         routes.push(route)
         return routes.length === 1 ? first : second
     })
-    const result = await teller.fetchPagedTransactions({ id: 'account', token: 'fixture' }, start, end)
+    const result = await teller.fetchPagedTransactions({ id: 'account', enrollmentId: 'enr_fixture' }, start, end)
     assert.equal(result.length, 101)
     assert.equal(new URL(`https://api.teller.io/${routes[0]}`).searchParams.get('start_date'), '2026-03-01')
     assert.equal(new URL(`https://api.teller.io/${routes[0]}`).searchParams.get('end_date'), '2026-03-31')
@@ -177,7 +181,7 @@ test('transaction pagination follows from_id, deduplicates IDs, and bounds dates
 
 test('transaction pagination detects repeated cursors', async () => {
     const teller = integration(async () => Array.from({ length: 100 }, () => transaction('same')))
-    await assert.rejects(teller.fetchPagedTransactions({ id: 'account', token: 'fixture' }, start, end), {
+    await assert.rejects(teller.fetchPagedTransactions({ id: 'account', enrollmentId: 'enr_fixture' }, start, end), {
         kind: 'malformed_response'
     })
 })
@@ -188,7 +192,9 @@ test('incremental request overlaps ten days', async () => {
         route = requestedRoute
         return []
     })
-    await teller.fetchPagedTransactions({ id: 'account', token: 'fixture' }, start, end, { incremental: true })
+    await teller.fetchPagedTransactions({ id: 'account', enrollmentId: 'enr_fixture' }, start, end, {
+        incremental: true
+    })
     assert.equal(new URL(`https://api.teller.io/${route}`).searchParams.get('start_date'), '2026-02-19')
 })
 
@@ -247,32 +253,35 @@ test('account fetch skips unavailable balances and rejects unavailable transacti
         routes.push(route)
         return route.includes('/transactions?') ? [] : { ...accountFixture, links: { transactions: '/transactions' } }
     })
-    const [account] = await teller.fetchAccount({ id: 'account', token: 'fixture' }, start, end)
+    const [account] = await teller.fetchAccount({ id: 'account', enrollmentId: 'enr_fixture' }, start, end)
     assert.equal(account.current, undefined)
     assert.equal(
         routes.some(route => route.endsWith('/balances')),
         false
     )
     const unsupported = integration(async () => ({ ...accountFixture, links: { balances: '/balances' } }))
-    await assert.rejects(unsupported.fetchAccount({ id: 'account', token: 'fixture' }, start, end), {
+    await assert.rejects(unsupported.fetchAccount({ id: 'account', enrollmentId: 'enr_fixture' }, start, end), {
         kind: 'unsupported_resource'
     })
 })
 
 test('malformed account and transaction payloads reject without hanging', async () => {
     const malformedAccount = integration(async () => ({ id: 'account', type: 'depository' }))
-    await assert.rejects(malformedAccount.fetchAccount({ id: 'account', token: 'fixture' }, start, end), {
+    await assert.rejects(malformedAccount.fetchAccount({ id: 'account', enrollmentId: 'enr_fixture' }, start, end), {
         kind: 'malformed_response'
     })
     const malformedTransactions = integration(async () => ({ transactions: [] }))
     await assert.rejects(
-        malformedTransactions.fetchPagedTransactions({ id: 'account', token: 'fixture' }, start, end),
+        malformedTransactions.fetchPagedTransactions({ id: 'account', enrollmentId: 'enr_fixture' }, start, end),
         { kind: 'malformed_response' }
     )
     const failedRequest = integration(async () => {
         throw new Error('fixture request failed')
     })
-    await assert.rejects(failedRequest.fetchPagedTransactions({ id: 'account', token: 'fixture' }, start, end), {
-        message: 'fixture request failed'
-    })
+    await assert.rejects(
+        failedRequest.fetchPagedTransactions({ id: 'account', enrollmentId: 'enr_fixture' }, start, end),
+        {
+            message: 'fixture request failed'
+        }
+    )
 })

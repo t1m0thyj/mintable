@@ -1,31 +1,28 @@
-import { getConfig } from '../../common/config'
-import { logInfo, logError } from '../../common/logging'
+import { Config, getConfig } from '../../common/config'
+import { logInfo } from '../../common/logging'
 import open from 'open'
-import { TellerIntegration } from './tellerIntegration'
-import { IntegrationId } from '../../types/integrations'
-import { TellerConfig } from '../../types/integrations/teller'
+import { SetupServerOptions, startTellerSetupServer } from './setupServer'
 
-export default () => {
-    return new Promise((resolve, reject) => {
-        try {
-            console.log('\nThis script will help you add accounts using Teller.\n')
-            console.log('\n\t1. A page will open in your browser allowing you to link accounts with Teller.')
-            console.log('\t2. Sign in with your banking provider for each account you wish to link.')
-            console.log("\t3. Click 'Done Linking Accounts' in your browser when you are finished.\n")
+export async function runTellerAccountSetup(
+    config: Config,
+    options: SetupServerOptions = {},
+    launch: (url: string) => Promise<unknown> = open
+): Promise<void> {
+    const session = await startTellerSetupServer(config, options)
+    try {
+        await launch(session.url)
+        logInfo('Teller account setup is open in your browser. Select Done or Cancel there to finish.')
+        await session.done
+        logInfo('Teller account setup complete.')
+    } catch (error) {
+        await session.close()
+        throw error
+    }
+}
 
-            const config = getConfig()
-            const tellerConfig = config.integrations[IntegrationId.Teller] as TellerConfig
-            const teller = new TellerIntegration(config)
-
-            logInfo('Account setup in progress.')
-            open(`http://localhost:8000?tellerAppId=${tellerConfig.appId}`)
-            teller.accountSetup().then(() => {
-                logInfo('Successfully set up Teller Account(s).')
-                return resolve(true)
-            })
-        } catch (e) {
-            logError('Unable to set up Teller Account(s).', e)
-            return reject()
-        }
-    })
+export default async () => {
+    const config = getConfig()
+    const portArgument = process.argv.find(value => value.startsWith('--port='))?.slice('--port='.length)
+    const port = portArgument === undefined ? 0 : Number(portArgument)
+    await runTellerAccountSetup(config, { port })
 }

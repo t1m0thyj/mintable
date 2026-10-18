@@ -1,147 +1,53 @@
-# Documentation
+# Mintable documentation
 
-#### Table of Contents
+Mintable imports balances and transactions through Teller or CSV files, then exports to Google Sheets or CSV files. Use Node 24 or newer.
 
-- [Overview](#overview)
-- [Installation](#installation)
-  - [Creating a Fresh Installation](#creating-a-fresh-installation)
-  - [Migrating from `v1.x.x`](#migrating-from-v1xx)
-- [Importing Account Balances & Transactions](#importing-account-balances--transactions)
-  - [Automatically – in the cloud – via Plaid](#automatically-in-the-cloud--via-plaid)
-  - [Automatically – via Teller](#automatically-via-teller)
-  - [Manually – on your local machine – via CSV bank statements](#manually--on-your-local-machine--via-csv-bank-statements)
-- [Exporting Account Balances & Transactions](#exporting-account-balances--transactions)
-  - [In the cloud – via Google Sheets](#in-the-cloud-via-google-sheets)
-  - [On your local machine – via CSV files](#on-your-local-machine--via-csv-files)
-- [Updating Transactions/Accounts](#updating-transactionsaccounts)
-  - [Manually – in your local machine's terminal](#manually-in-your-local-machines-terminal)
-  - [Automatically – in your Mac's Menu Bar – via BitBar](#automatically-in-your-macs-menu-bar--via-bitbar)
-  - [Automatically – in your local machine's terminal – via `cron`](#automatically-in-your-local-machines-terminal--via-cron)
-  - [Automatically – in the cloud – via GitHub Actions](#automatically-in-the-cloud--via-github-actions)
-- [Transaction Rules](#transaction-rules)
-  - [Transaction `filter` Rules](#transaction-filter-rules)
-  - [Transaction `override` Rules](#transaction-override-rules)
-- [Development](#development)
-- [Contributing](#contributing)
-
-## Overview
-
-![Mintable](./img/mintable.png)
-
-Mintable simplifies managing your finances, for free, without ads, and without tracking your information. Here's how it works:
-
-1. You connect your accounts and a spreadsheet to Mintable.
-1. Mintable integrates with your financial institutions to automatically populate transactions into the leftmost columns in your spreadsheet.
-1. You can add whatever formulas, charts, or calculations you want to the right of your transactions (just like a normal spreadsheet). We also have templates to get you started.
-
----
-
-## Installation
-
-### Creating a Fresh Installation
-
-1. Sign up for [Plaid's Free Plan](https://plaid.com/pricing/). The free plan is limited to 100 banking institutions which should be more than enough for personal use. After applying and verifying your email it usually takes a day or two for them to approve your account.
-2. Install the global `mintable` command line utility:
-
-    ```bash
-    npm install -g mintable
-    ```
-
-3. Set up the integration with your banks and a spreadsheet using the setup wizard:
-
-    ```bash
-    mintable setup
-    ```
-
-4. Update your account balances/transactions:
-
-    ```
-    mintable fetch
-    ```
-
-![Mintable CLI](./img/cli.png)
-
-### Migrating from `v1.x.x`
-
-> **⚠️ Warning:** Plaid [introduced a breaking change in July 2020](https://github.com/plaid/plaid-node/pull/310) which deprecates the Public Key component from the authentication process. Once you upgrade to `v2.x.x` and disable your Public Key, you will no longer be able to continue using your `v1.x.x` installation. Proceed with caution.
-
-1. [Disable the Public Key in your Plaid Dashboard](https://plaid.com/docs/upgrade-to-link-tokens/#disable-the-public-key) (read ⚠️ above!)
-
-2. Install the new `v2.x.x` `mintable` command line utility:
-
-    ```bash
-    npm install -g mintable
-    ```
-
-3. Migrate your config to the new format:
-
-    ```bash
-    mintable migrate --old-config-file /path/to/your/old/mintable.config.json
-    ```
-
-4. Update your account balances/transactions:
-
-    ```bash
-    mintable fetch
-    ```
-
-> **Note:** After successful migration you can delete everything in your `v1.x.x` `mintable` folder. You may want to keep a copy of your `mintable.config.json` for posterity.
-
----
-
-## Importing Account Balances & Transactions
-
-### Automatically – in the cloud – via [Plaid](https://plaid.com)
-
-You can run:
+## Fresh setup
 
 ```bash
-mintable plaid-setup
+npm install -g mintable
+mintable setup
+mintable fetch
 ```
 
-to enter the Plaid setup wizard. This will allow you to automatically fetch updated account balances/transactions from your banking institutions every time `mintable fetch` is run.
+The wizard asks whether to connect banks with Teller or use CSV files only, then asks for Google Sheets or CSV output. Teller development and production connect to real bank data; sandbox uses test data. Development is the default. Teller development and production require a client certificate, private key, and application ID. The CSV-only option requires no Teller account.
 
-After you have the base Plaid integration working, you can run:
+The account linking page opens in your browser after its local server starts. It lists linked accounts, lets you link additional institutions and choose multiple accounts from each enrollment, and offers a **Repair connection** action for an existing enrollment. Select **Done linking accounts** to finish, or **Cancel setup** to stop. The local server uses an available port by default; use `mintable account-setup --port=8000` to choose one. Removing an account only removes its local Mintable configuration. To revoke bank access, use Teller's own controls separately.
 
-```bash
-mintable account-setup
+## Commands
+
+- `mintable setup`: create a fresh v3 configuration.
+- `mintable teller-setup`: edit Teller application settings.
+- `mintable account-setup`: link, repair, or remove Teller accounts. `teller-account-setup` is an alias.
+- `mintable csv-import-setup`: add a CSV account.
+- `mintable csv-export-setup`: select CSV output.
+- `mintable google-setup`: select Google Sheets output.
+- `mintable fetch`: fetch accounts and update the selected output.
+
+Plaid is no longer a live provider. Existing Plaid credentials cannot be reused as Teller credentials. The v3 migration flow for old configurations is still in progress; keep old configs and exports until that work is complete.
+
+## Configuration example
+
+A fresh CSV-only setup can produce a configuration shaped like this (the wizard adds CSV import and export details):
+
+```json
+{
+  "version": 3,
+  "integrations": {},
+  "enrollments": {},
+  "accounts": {},
+  "transactions": { "integration": "csv-export", "properties": ["date", "amount", "name", "account", "category"] },
+  "balances": { "integration": "csv-export", "properties": ["institution", "account", "type", "current", "available", "limit", "currency"] }
+}
 ```
 
-to enter the account setup wizard to add, update, or remove accounts.
+A Teller account references an `enrollmentId` in `enrollments`. The enrollment holds the access token once. Treat your configuration and backups as private credentials.
 
-![Account Setup](./img/account-setup.png)
+## Importing account balances and transactions
 
-This will launch a local web server (necessary to authenticate with Plaid's servers) for you to connect your banks.
+### Teller
 
-To add a new account, click the blue **Link A New Account** button. To re-authenticate with an existing account, click the blue **Update** button next to the account name in the table.
-
-> **Note:** Plaid is the default import integration and these steps are not necessary if you've already run `mintable setup`.
-
-### Automatically via [Teller](https://teller.io)
-
-You can run:
-
-```bash
-mintable teller-setup
-```
-
-to enter the Teller setup wizard. This will ask for things like the certificate, private key, and application ID provided when you sign up for Teller.
-
-After you have the base Teller integration working, you can run:
-
-```bash
-mintable teller-account-setup
-```
-
-to enter the account setup wizard to add or remove accounts.
-
-This will launch a local web server (necessary to authenticate with Teller's servers) for you to connect your banks.
-
-To add a new account, click the blue **Link A New Account** button.
-
-> **Note:** Access to an account may expire. In that case, you should run `mintable teller-account-setup` to re-add the accounts with expired access.
-
-After set up is complete, you will import updated account balances/transactions from your banking institutions every time `mintable fetch` is run.
+Run `mintable teller-setup` to set the environment and application credentials, then `mintable account-setup` to connect banks. Teller Connect requests the `balance` and `transactions` products. You can repair a disconnected enrollment from the same account setup page.
 
 ### Manually – on your local machine – via CSV bank statements
 
@@ -297,7 +203,7 @@ Transaction `override` rules allow you to override auto-populated fields based o
 
 You might want to do this to standardize values between financial institutions (`XFER` -> `Transfer`), or tune things to suit your particular budgeting needs (described below).
 
-For example, let's say you want to know how much you are spending on coffee each month, but Plaid/your bank categorizes your favorite shops as `Restaurants – Fast Food`. You might add the following to your `transactions.rules` config:
+For example, let's say you want to know how much you are spending on coffee each month, but your bank categorizes your favorite shops as `Restaurants – Fast Food`. You might add the following to your `transactions.rules` config:
 
 ```json
 "rules": [

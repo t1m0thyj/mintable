@@ -13,7 +13,9 @@ const DEFAULT_CONFIG_FILE = '~/mintable.jsonc'
 const DEFAULT_CONFIG_VAR = 'MINTABLE_CONFIG'
 
 const DEFAULT_CONFIG: Config = {
+    version: 3,
     accounts: {},
+    enrollments: {},
     transactions: {
         integration: IntegrationId.Google,
         properties: ['date', 'amount', 'name', 'account', 'category']
@@ -38,10 +40,18 @@ export interface EnvironmentConfig {
 export type ConfigSource = FileConfig | EnvironmentConfig
 
 export interface Config {
+    version: 3
     integrations: { [id: string]: IntegrationConfig }
     accounts: { [id: string]: AccountConfig }
+    enrollments: { [id: string]: TellerEnrollmentConfig }
     transactions: TransactionConfig
     balances: BalanceConfig
+}
+
+export interface TellerEnrollmentConfig {
+    id: string
+    token: string
+    institution?: string
 }
 
 export const getConfigSource = (): ConfigSource => {
@@ -111,6 +121,9 @@ export const parseConfig = (configString: string): Object => {
 export const getConfigSchema = (): object => require('./config.schema.json')
 
 export const validateConfig = (parsedConfig: Object): Config => {
+    if (!parsedConfig || (parsedConfig as Config).version !== 3) {
+        logError('This configuration is not v3. Preserve it for migration before using this version.')
+    }
     const configSchema = getConfigSchema()
 
     // Validate parsed configuration object against generated JSON schema

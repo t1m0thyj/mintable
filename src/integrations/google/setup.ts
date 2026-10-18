@@ -93,7 +93,7 @@ export default async () => {
             logInfo('Successfully set up Google Integration.')
             return resolve()
         } catch (e) {
-            logError('Unable to set up Plaid Integration.', e)
+            logError('Unable to set up Google Integration.', e)
             return reject()
         }
     })

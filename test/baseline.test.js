@@ -17,10 +17,14 @@ const marchEnd = new Date(2026, 2, 31)
 
 test('Teller date filter includes both month boundaries', async () => {
     const teller = new TellerIntegration(
-        { integrations: { teller: {} } },
+        { integrations: { teller: {} }, enrollments: { enr_fixture: { token: 'fixture' } } },
         { requestJson: async () => tellerTransactions }
     )
-    const result = await teller.fetchPagedTransactions({ id: 'checking', token: 'fixture' }, marchStart, marchEnd)
+    const result = await teller.fetchPagedTransactions(
+        { id: 'checking', enrollmentId: 'enr_fixture' },
+        marchStart,
+        marchEnd
+    )
     assert.deepEqual(
         result.map(transaction => transaction.id),
         ['first', 'last']
@@ -36,7 +40,7 @@ test('existing Teller sign convention keeps spending positive for both account t
         ['credit', '0.00', 0]
     ]) {
         const teller = new TellerIntegration(
-            { integrations: { teller: {} } },
+            { integrations: { teller: {} }, enrollments: { enr_fixture: { token: 'fixture' } } },
             {
                 requestJson: async (_token, endpoint) => {
                     if (endpoint.endsWith('/balances')) return { ledger: '0.00', available: '0.00' }
@@ -62,7 +66,11 @@ test('existing Teller sign convention keeps spending positive for both account t
                 status: 'posted'
             }
         ]
-        const [account] = await teller.fetchAccount({ id: 'account', token: 'fixture' }, marchStart, marchEnd)
+        const [account] = await teller.fetchAccount(
+            { id: 'account', enrollmentId: 'enr_fixture' },
+            marchStart,
+            marchEnd
+        )
         assert.equal(account.transactions[0].amount, expected)
     }
 })
@@ -155,7 +163,9 @@ test('CSV export uses configured column order and date format', async () => {
 test('packaged schema validates JSONC configuration', () => {
     const parsed = parseConfig(`{
         // Comments are supported in user config.
+        "version": 3,
         "accounts": {},
+        "enrollments": {},
         "integrations": {},
         "transactions": { "integration": "google", "properties": ["date"] },
         "balances": { "integration": "google", "properties": ["account"] }

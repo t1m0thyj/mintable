@@ -3,6 +3,7 @@ import prompts from 'prompts'
 import { IntegrationId } from '../../types/integrations'
 import { updateConfig } from '../../common/config'
 import { logInfo, logError } from '../../common/logging'
+import path from 'path'
 
 export default async () => {
     return new Promise<void>(async (resolve, reject) => {
@@ -29,9 +30,9 @@ export default async () => {
                     message: `Where would you like to save exported transactions?`,
                     initial: '/path/to/my/transactions.csv',
                     validate: (s: string) =>
-                        s.substring(0, 1) === '/' && s.substring(s.length - 4) === '.csv'
+                        path.isAbsolute(s) && s.toLowerCase().endsWith('.csv')
                             ? true
-                            : 'Must start with `/` and end with `.csv`.'
+                            : 'Enter an absolute path ending in .csv.'
                 },
                 {
                     type: 'text',
@@ -39,11 +40,15 @@ export default async () => {
                     message: `Where would you like to save exported account balances?`,
                     initial: '/path/to/my/account-balances.csv',
                     validate: (s: string) =>
-                        s.substring(0, 1) === '/' && s.substring(s.length - 4) === '.csv'
+                        path.isAbsolute(s) && s.toLowerCase().endsWith('.csv')
                             ? true
-                            : 'Must start with `/` and end with `.csv`.'
+                            : 'Enter an absolute path ending in .csv.'
                 }
             ])
+
+            if (!responses.name || !responses.transactionPath || !responses.balancePath) {
+                throw new Error('CSV export setup cancelled.')
+            }
 
             updateConfig(config => {
                 let CSVExportConfig =

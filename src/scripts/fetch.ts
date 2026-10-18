@@ -1,5 +1,4 @@
 import { getConfig } from '../common/config'
-import { PlaidIntegration } from '../integrations/plaid/plaidIntegration'
 import { TellerIntegration } from '../integrations/teller/tellerIntegration'
 import { GoogleIntegration } from '../integrations/google/googleIntegration'
 import { logInfo } from '../common/logging'
@@ -30,11 +29,6 @@ export default async () => {
         logInfo(`Fetching account ${accountConfig.id} using ${accountConfig.integration}.`)
 
         switch (accountConfig.integration) {
-            case IntegrationId.Plaid:
-                const plaid = new PlaidIntegration(config)
-                accounts = accounts.concat(await plaid.fetchAccount(accountConfig, startDate, endDate))
-                break
-
             case IntegrationId.CSVImport:
                 const csv = new CSVImportIntegration(config)
                 accounts = accounts.concat(await csv.fetchAccount(accountConfig, startDate, endDate))

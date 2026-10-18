@@ -7,7 +7,7 @@ export interface TellerConfig extends BaseIntegrationConfig {
     pathCertificate: string
     pathPrivateKey: string
     appId: string
-    environment?: 'sandbox' | 'development' | 'production'
+    environment: 'sandbox' | 'development' | 'production'
 }
 
 export const defaultTellerConfig: TellerConfig = {
@@ -17,7 +17,8 @@ export const defaultTellerConfig: TellerConfig = {
 
     pathCertificate: '',
     pathPrivateKey: '',
-    appId: ''
+    appId: '',
+    environment: 'development'
 }
 
 export interface TellerTransaction {

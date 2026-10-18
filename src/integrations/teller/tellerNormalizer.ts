@@ -54,6 +54,16 @@ export const parseTellerAccount = (raw: unknown, expectedId: string): TellerAcco
     return raw as unknown as TellerAccount
 }
 
+export const parseTellerAccounts = (raw: unknown): TellerAccount[] => {
+    if (!Array.isArray(raw)) return malformed('accounts')
+    return raw
+        .filter(item => !isRecord(item) || item.status !== 'closed')
+        .map(item => {
+            if (!isRecord(item) || !nonempty(item.id) || !nonempty(item.enrollment_id)) return malformed('account')
+            return parseTellerAccount(item, item.id)
+        })
+}
+
 export const parseTellerBalances = (raw: unknown, accountId: string): TellerBalances => {
     if (!isRecord(raw) || (raw.account_id !== undefined && raw.account_id !== accountId)) return malformed('balances')
     for (const key of ['ledger', 'available']) {

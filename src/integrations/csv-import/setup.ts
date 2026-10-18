@@ -4,6 +4,7 @@ import { IntegrationId } from '../../types/integrations'
 import { updateConfig } from '../../common/config'
 import { logInfo, logError } from '../../common/logging'
 import { CSVAccountConfig } from '../../types/account'
+import path from 'path'
 
 export default async () => {
     return new Promise<void>(async (resolve, reject) => {
@@ -37,7 +38,7 @@ export default async () => {
                     name: 'path',
                     message: "What is the path/globs to the CSV file(s) you'd like to import?",
                     initial: '/path/to/my/csv/files/*.csv',
-                    validate: (s: string) => (s.substring(0, 1) === '/' ? true : 'Must start with `/`.')
+                    validate: (s: string) => (path.isAbsolute(s) ? true : 'Enter an absolute path or glob.')
                 },
                 {
                     type: 'text',
@@ -48,6 +49,10 @@ export default async () => {
                         1 < s.length && s.length <= 64 ? true : 'Must be between 1 and 64 characters in length.'
                 }
             ])
+
+            if (!responses.name || !responses.account || !responses.path || !responses.dateFormat) {
+                throw new Error('CSV import setup cancelled.')
+            }
 
             const defaultCSVAccountConfig: CSVAccountConfig = {
                 paths: [responses.path],

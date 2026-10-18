@@ -32,10 +32,6 @@ export interface BaseAccountConfig {
     integration: IntegrationId
 }
 
-export interface PlaidAccountConfig extends BaseAccountConfig {
-    token: string
-}
-
 export interface CSVAccountConfig extends BaseAccountConfig {
     paths: string[]
     transformer: { [inputColumn: string]: keyof Transaction }
@@ -44,7 +40,10 @@ export interface CSVAccountConfig extends BaseAccountConfig {
 }
 
 export interface TellerAccountConfig extends BaseAccountConfig {
-    token: string
+    integration: IntegrationId.Teller
+    enrollmentId: string
+    label: string
+    migrationAccountId?: string
 }
 
-export type AccountConfig = PlaidAccountConfig | CSVAccountConfig | TellerAccountConfig
+export type AccountConfig = CSVAccountConfig | TellerAccountConfig
